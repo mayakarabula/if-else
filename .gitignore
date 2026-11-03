@@ -1,0 +1,19 @@
+rules/
+config/
+
+# dependencies
+backend/node_modules/
+frontend/node_modules/
+
+# build
+backend/dist/
+frontend/dist/
+
+# runtime
+config/runs.json
+config/users.json
+
+# secrets
+.env
+backend/.env
+frontend/.env

@@ -1,0 +1,76 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    command: npm run start:api
+    ports:
+      - "3001:3001"
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      PORT: "3001"
+      NODE_ENV: development
+      DATA_ROOT: /data
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      FRONTEND_URL: http://localhost:5173
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-me}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:5173/api/auth/google/callback}
+    volumes:
+      - ./backend/src:/app/src
+      - ./rules:/data/rules
+      - ./config:/data/config
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: npm run start:worker
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      NODE_ENV: development
+      DATA_ROOT: /data
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      WORKER_CONCURRENCY: "2"
+      FRONTEND_URL: http://localhost:5173
+    volumes:
+      - ./backend/src:/app/src
+      - ./rules:/data/rules
+      - ./config:/data/config
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      API_PROXY_TARGET: http://api:3001
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+    depends_on:
+      - api
+
+volumes:
+  redis-data:
