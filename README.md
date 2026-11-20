@@ -40,17 +40,16 @@ You still need Redis for the queue:
 docker compose up redis -d
 ```
 
-Then in two terminals (via `nix-shell` if you use it):
+Then install deps (needed after pulling dependency changes such as `d3`) and run in separate terminals (via `nix-shell` if you use it):
 
 ```bash
-# API + scheduler
-cd backend && npm run dev
+cd backend && npm install && npm run dev
 
 # Worker
 cd backend && npm run dev:worker
 
 # UI
-cd frontend && npm run dev
+cd frontend && npm install && npm run dev
 ```
 
 Set `REDIS_HOST=127.0.0.1` in `backend/.env` (see `.env.example`).
