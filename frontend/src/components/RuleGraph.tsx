@@ -203,6 +203,20 @@ export function RuleGraph({
 
   const { laid, links, width, height } = useMemo(() => layoutGraph(state.nodes), [state.nodes]);
 
+  const pathNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!selectedId) return ids;
+    const byId = new Map(state.nodes.map((n) => [n.id, n]));
+    let cursor: string | null = selectedId;
+    while (cursor) {
+      ids.add(cursor);
+      cursor = byId.get(cursor)?.parentId ?? null;
+    }
+    return ids;
+  }, [selectedId, state.nodes]);
+
+  const PATH_BLUE = "#2563eb";
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -335,10 +349,23 @@ export function RuleGraph({
           >
             <path d="M 0 0 L 10 5 L 0 10 z" fill={token.colorTextSecondary} opacity="0.55" />
           </marker>
+          <marker
+            id="rule-arrow-path"
+            viewBox="0 0 10 10"
+            refX="9"
+            refY="5"
+            markerWidth="8"
+            markerHeight="8"
+            orient="auto-start-reverse"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={PATH_BLUE} />
+          </marker>
         </defs>
 
         <g className="viewport">
           {links.map((link) => {
+            const onPath =
+              pathNodeIds.has(link.target.id) && pathNodeIds.has(link.source.id);
             const midX = (link.source.x + NODE_W + link.target.x) / 2;
             const midY = (link.source.y + link.target.y) / 2 + NODE_H / 2;
             return (
@@ -346,10 +373,10 @@ export function RuleGraph({
                 <path
                   d={linkPath(link)}
                   fill="none"
-                  stroke={token.colorTextSecondary}
-                  strokeOpacity={0.45}
-                  strokeWidth={2}
-                  markerEnd="url(#rule-arrow)"
+                  stroke={onPath ? PATH_BLUE : token.colorTextSecondary}
+                  strokeOpacity={onPath ? 0.95 : 0.45}
+                  strokeWidth={onPath ? 3 : 2}
+                  markerEnd={onPath ? "url(#rule-arrow-path)" : "url(#rule-arrow)"}
                 />
                 {link.label && (
                   <g transform={`translate(${midX}, ${midY})`}>
@@ -360,14 +387,14 @@ export function RuleGraph({
                       height={20}
                       rx={6}
                       fill={token.colorBgContainer}
-                      stroke={token.colorBorder}
+                      stroke={onPath ? PATH_BLUE : token.colorBorder}
                     />
                     <text
                       textAnchor="middle"
                       dominantBaseline="central"
                       fontSize={10}
                       fontWeight={700}
-                      fill={token.colorTextSecondary}
+                      fill={onPath ? PATH_BLUE : token.colorTextSecondary}
                       letterSpacing="0.06em"
                     >
                       {link.label}
