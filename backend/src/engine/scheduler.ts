@@ -8,6 +8,7 @@ import {
   listRules,
   type Rule,
   type RuleIfClause,
+  type RuleThenClause,
   type RunLog,
 } from "../store/rules.js";
 
@@ -25,6 +26,27 @@ function isDataClause(clause: RuleIfClause): boolean {
   return trigger?.kind === "data";
 }
 
+async function evaluateClause(
+  clause: RuleIfClause,
+  clauseStates: Record<string, Record<string, unknown>>,
+  integrationConfig: Record<string, Record<string, unknown>>,
+  manual?: boolean,
+) {
+  const trigger = getTrigger(clause.integration, clause.trigger);
+  if (!trigger) {
+    throw new Error(`Unknown trigger: ${clause.integration}.${clause.trigger}`);
+  }
+
+  const key = clauseKey(clause);
+  const result = await trigger.evaluate(clause.config, {
+    integrationConfig: integrationConfig[clause.integration] ?? {},
+    lastState: clauseStates[key],
+    manual,
+  });
+
+  return { key, result };
+}
+
 async function evaluateIfBlock(
   ifBlock: ReturnType<typeof normalizeIf>,
   state: RuleState,
@@ -34,54 +56,61 @@ async function evaluateIfBlock(
   const mergedData: Record<string, unknown> = {};
   const clauseStates = { ...state.clauses };
 
-  const conditions = ifBlock.all.filter((clause) => !isDataClause(clause));
-  const dataClauses = ifBlock.all.filter((clause) => isDataClause(clause));
+  const conditions = ifBlock.clauses.filter((clause) => !isDataClause(clause));
+  const dataClauses = ifBlock.clauses.filter((clause) => isDataClause(clause));
 
-  for (const clause of conditions) {
-    const trigger = getTrigger(clause.integration, clause.trigger);
-    if (!trigger) {
-      throw new Error(`Unknown trigger: ${clause.integration}.${clause.trigger}`);
+  let fired = ifBlock.mode === "all" ? true : false;
+
+  if (conditions.length === 0) {
+    fired = false;
+  } else if (ifBlock.mode === "any") {
+    fired = false;
+    for (const clause of conditions) {
+      const { key, result } = await evaluateClause(clause, clauseStates, integrationConfig, manual);
+      if (result.state) clauseStates[key] = result.state;
+      mergedData[clause.integration] = result.data;
+      if (result.fired) fired = true;
     }
-
-    const key = clauseKey(clause);
-    const result = await trigger.evaluate(clause.config, {
-      integrationConfig: integrationConfig[clause.integration] ?? {},
-      lastState: clauseStates[key],
-      manual,
-    });
-
-    if (result.state) {
-      clauseStates[key] = result.state;
-    }
-
-    mergedData[clause.integration] = result.data;
-
-    if (!result.fired) {
-      return { fired: false, data: mergedData, clauses: clauseStates };
+  } else {
+    for (const clause of conditions) {
+      const { key, result } = await evaluateClause(clause, clauseStates, integrationConfig, manual);
+      if (result.state) clauseStates[key] = result.state;
+      mergedData[clause.integration] = result.data;
+      if (!result.fired) {
+        fired = false;
+        break;
+      }
     }
   }
 
-  for (const clause of dataClauses) {
-    const trigger = getTrigger(clause.integration, clause.trigger);
-    if (!trigger) {
-      throw new Error(`Unknown trigger: ${clause.integration}.${clause.trigger}`);
+  // Data sources always run when we reach actions (then or else) so templates resolve.
+  // For the fired path we gather them here; else path gathers in evaluateRule.
+  if (fired) {
+    for (const clause of dataClauses) {
+      const { key, result } = await evaluateClause(clause, clauseStates, integrationConfig, manual);
+      if (result.state) clauseStates[key] = result.state;
+      mergedData[clause.integration] = result.data;
     }
-
-    const key = clauseKey(clause);
-    const result = await trigger.evaluate(clause.config, {
-      integrationConfig: integrationConfig[clause.integration] ?? {},
-      lastState: clauseStates[key],
-      manual,
-    });
-
-    if (result.state) {
-      clauseStates[key] = result.state;
-    }
-
-    mergedData[clause.integration] = result.data;
   }
 
-  return { fired: true, data: mergedData, clauses: clauseStates };
+  return { fired, data: mergedData, clauses: clauseStates, dataClauses };
+}
+
+async function runActions(
+  actions: RuleThenClause[],
+  integrationConfig: Record<string, Record<string, unknown>>,
+  triggerData: Record<string, unknown>,
+) {
+  for (const clause of actions) {
+    const action = getAction(clause.integration, clause.action);
+    if (!action) {
+      throw new Error(`Unknown action: ${clause.integration}.${clause.action}`);
+    }
+    await action.execute(clause.config, {
+      integrationConfig: integrationConfig[clause.integration] ?? {},
+      triggerData,
+    });
+  }
 }
 
 /** Evaluate a rule immediately (worker). Prefer enqueueing via the queue from the API. */
@@ -101,9 +130,10 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
 
   const ifBlock = normalizeIf(rule.if);
   const thenBlock = normalizeThen(rule.then);
+  const elseBlock = normalizeThen(rule.else);
   const integrationConfig = await loadIntegrationConfig();
 
-  for (const clause of thenBlock.all) {
+  for (const clause of [...thenBlock.all, ...elseBlock.all]) {
     if (!getAction(clause.integration, clause.action)) {
       const run: RunLog = {
         ...base,
@@ -126,10 +156,57 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
     });
 
     if (!result.fired) {
+      if (elseBlock.all.length > 0) {
+        // Still resolve data sources so else templates can use them.
+        const clauseStates = { ...result.clauses };
+        const data = { ...result.data };
+        for (const clause of result.dataClauses) {
+          const { key, result: clauseResult } = await evaluateClause(
+            clause,
+            clauseStates,
+            integrationConfig,
+            options?.manual,
+          );
+          if (clauseResult.state) clauseStates[key] = clauseResult.state;
+          data[clause.integration] = clauseResult.data;
+        }
+
+        await runActions(elseBlock.all, integrationConfig, data);
+
+        ruleStates.set(rule.id, {
+          lastChecked: Date.now(),
+          lastFired: Date.now(),
+          clauses: clauseStates,
+        });
+
+        const run: RunLog = {
+          ...base,
+          status: "success",
+          message:
+            elseBlock.all.length === 1
+              ? "Else action executed"
+              : `${elseBlock.all.length} else actions executed`,
+          triggerData: data,
+        };
+        await appendRun(run);
+        return run;
+      }
+
       const run: RunLog = {
         ...base,
         status: "skipped",
         message: "Trigger condition not met",
+        triggerData: result.data,
+      };
+      await appendRun(run);
+      return run;
+    }
+
+    if (thenBlock.all.length === 0) {
+      const run: RunLog = {
+        ...base,
+        status: "skipped",
+        message: "No then actions configured",
         triggerData: result.data,
       };
       await appendRun(run);
@@ -148,13 +225,7 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
       return run;
     }
 
-    for (const clause of thenBlock.all) {
-      const action = getAction(clause.integration, clause.action)!;
-      await action.execute(clause.config, {
-        integrationConfig: integrationConfig[clause.integration] ?? {},
-        triggerData: result.data,
-      });
-    }
+    await runActions(thenBlock.all, integrationConfig, result.data);
 
     ruleStates.set(rule.id, {
       lastChecked: Date.now(),

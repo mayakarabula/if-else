@@ -26,3 +26,39 @@ html[data-theme="dark"] body {
   margin-top: auto;
 }
 
+.rule-graph svg:active {
+  cursor: grabbing;
+}
+
+.rule-graph-node {
+  transition: stroke-width 160ms ease, filter 160ms ease;
+}
+
+.rule-graph-add,
+.rule-graph-remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 38, 31, 0.18);
+  background: #efe9df;
+  color: #2a261f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(42, 38, 31, 0.12);
+}
+
+.rule-graph-add:hover {
+  background: #a07a3a;
+  border-color: #a07a3a;
+  color: #fff;
+}
+
+.rule-graph-remove:hover {
+  background: #8b4d3b;
+  border-color: #8b4d3b;
+  color: #fff;
+}
+

@@ -46,7 +46,8 @@ export interface RuleIfClause {
 }
 
 export interface RuleIfBlock {
-  all: RuleIfClause[];
+  all?: RuleIfClause[];
+  any?: RuleIfClause[];
   pollInterval?: string;
 }
 
@@ -70,6 +71,7 @@ export interface Rule {
   enabled: boolean;
   if: RuleIf;
   then: RuleThen;
+  else?: RuleThen;
   createdAt?: string;
   updatedAt?: string;
 }
