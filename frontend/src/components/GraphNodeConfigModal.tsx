@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Button, Col, Empty, Input, Modal, Row, Space, Typography } from "antd";
+import { Button, Empty, Input, Modal, Space, Typography } from "antd";
 import { EditOutlined } from "@ant-design/icons";
 import type { ActionMeta, Integration, TriggerMeta } from "../api/client";
 import { ConfigFields } from "./ClauseEditors";
@@ -37,29 +37,41 @@ function OptionCard({
       type="button"
       onClick={onClick}
       style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 12,
+        boxSizing: "border-box",
         width: "100%",
+        maxWidth: "100%",
         textAlign: "left",
         padding: 12,
         borderRadius: 12,
         border: selected ? "1.5px solid var(--app-primary)" : "1px solid rgba(42,38,31,0.12)",
         background: selected ? "rgba(160,122,58,0.08)" : "var(--app-paper)",
         cursor: "pointer",
+        overflow: "hidden",
       }}
     >
-      <Space align="start" size={12}>
+      <div style={{ flex: "0 0 auto" }}>
         <IntegrationIcon integration={integration} size="sm" />
-        <div style={{ minWidth: 0 }}>
-          <Typography.Text strong>{integration.name}</Typography.Text>
-          <div>
-            <Typography.Text type="secondary">{title}</Typography.Text>
-          </div>
-          {description && (
-            <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0, marginTop: 4 }}>
-              {description}
-            </Typography.Paragraph>
-          )}
-        </div>
-      </Space>
+      </div>
+      <div style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden" }}>
+        <Typography.Text strong ellipsis style={{ display: "block", width: "100%" }}>
+          {integration.name}
+        </Typography.Text>
+        <Typography.Text type="secondary" ellipsis style={{ display: "block", width: "100%" }}>
+          {title}
+        </Typography.Text>
+        {description && (
+          <Typography.Paragraph
+            type="secondary"
+            ellipsis={{ rows: 2 }}
+            style={{ marginBottom: 0, marginTop: 4 }}
+          >
+            {description}
+          </Typography.Paragraph>
+        )}
+      </div>
     </button>
   );
 }
@@ -262,43 +274,47 @@ export function GraphNodeConfigModal({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-              <div style={{ maxHeight: "min(46vh, 380px)", overflowY: "auto" }}>
+              <div
+                style={{
+                  maxHeight: "min(46vh, 380px)",
+                  overflowX: "hidden",
+                  overflowY: "auto",
+                }}
+              >
                 {options.length === 0 ? (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                     description={isCondition ? "No matching conditions" : "No matching actions"}
                   />
                 ) : (
-                  <Row gutter={[12, 12]}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
                     {options.map((option) => {
                       if ("trigger" in option) {
                         const { key, integration, trigger } = option;
                         return (
-                          <Col key={key} span={24}>
-                            <OptionCard
-                              integration={integration}
-                              title={trigger.label}
-                              description={trigger.description}
-                              selected={node.integration === integration.id && node.trigger === trigger.id}
-                              onClick={() => selectTrigger(integration.id, trigger)}
-                            />
-                          </Col>
+                          <OptionCard
+                            key={key}
+                            integration={integration}
+                            title={trigger.label}
+                            description={trigger.description}
+                            selected={node.integration === integration.id && node.trigger === trigger.id}
+                            onClick={() => selectTrigger(integration.id, trigger)}
+                          />
                         );
                       }
                       const { key, integration, action } = option;
                       return (
-                        <Col key={key} span={24}>
-                          <OptionCard
-                            integration={integration}
-                            title={action.label}
-                            description={action.description}
-                            selected={node.integration === integration.id && node.action === action.id}
-                            onClick={() => selectAction(integration.id, action)}
-                          />
-                        </Col>
+                        <OptionCard
+                          key={key}
+                          integration={integration}
+                          title={action.label}
+                          description={action.description}
+                          selected={node.integration === integration.id && node.action === action.id}
+                          onClick={() => selectAction(integration.id, action)}
+                        />
                       );
                     })}
-                  </Row>
+                  </div>
                 )}
               </div>
               {hasSelection && (

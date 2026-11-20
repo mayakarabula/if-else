@@ -453,7 +453,7 @@ export function RuleGraph({
                       menu={{
                         items: addOptions.map((kind) => ({
                           key: kind,
-                          label: `Add ${NODE_COLORS[kind].label}`,
+                          label: NODE_COLORS[kind].label,
                           onClick: () => onAddChild(item.id, kind),
                         })),
                       }}
