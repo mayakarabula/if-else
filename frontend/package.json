@@ -11,12 +11,14 @@
   "dependencies": {
     "@ant-design/icons": "^6.3.4",
     "antd": "^6.6.5",
+    "d3": "^7.9.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.4.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.14",
+    "@types/d3": "^7.4.3",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",

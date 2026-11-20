@@ -5,7 +5,8 @@ export interface RuleIfClause {
 }
 
 export interface RuleIfBlock {
-  all: RuleIfClause[];
+  all?: RuleIfClause[];
+  any?: RuleIfClause[];
   pollInterval?: string;
 }
 
@@ -23,17 +24,30 @@ export interface RuleThenBlock {
 
 export type RuleThen = RuleThenClause | RuleThenBlock;
 
-export function normalizeIf(ifBlock: RuleIf): RuleIfBlock {
-  if ("all" in ifBlock && Array.isArray(ifBlock.all)) {
-    return ifBlock;
+export type ConditionMode = "all" | "any";
+
+export interface NormalizedIf {
+  mode: ConditionMode;
+  clauses: RuleIfClause[];
+  pollInterval?: string;
+}
+
+export function normalizeIf(ifBlock: RuleIf): NormalizedIf {
+  if (typeof ifBlock === "object" && ifBlock !== null && ("all" in ifBlock || "any" in ifBlock)) {
+    const block = ifBlock as RuleIfBlock;
+    if (Array.isArray(block.any) && block.any.length > 0) {
+      return { mode: "any", clauses: block.any, pollInterval: block.pollInterval };
+    }
+    return { mode: "all", clauses: block.all ?? [], pollInterval: block.pollInterval };
   }
 
   const legacy = ifBlock as RuleIfClause & { pollInterval?: string };
   const { pollInterval, ...clause } = legacy;
-  return { all: [clause], pollInterval };
+  return { mode: "all", clauses: [clause], pollInterval };
 }
 
-export function normalizeThen(thenBlock: RuleThen): RuleThenBlock {
+export function normalizeThen(thenBlock: RuleThen | undefined | null): { all: RuleThenClause[] } {
+  if (!thenBlock) return { all: [] };
   if ("all" in thenBlock && Array.isArray(thenBlock.all)) {
     return thenBlock;
   }
@@ -41,26 +55,38 @@ export function normalizeThen(thenBlock: RuleThen): RuleThenBlock {
   return { all: [thenBlock as RuleThenClause] };
 }
 
-export function serializeIf(clauses: RuleIfClause[], pollInterval: string): RuleIf {
+export function serializeIf(
+  clauses: RuleIfClause[],
+  pollInterval: string,
+  mode: ConditionMode = "all",
+): RuleIf {
   const hasTime = clauses.some((clause) => clause.integration === "time");
+  const key = mode === "any" ? "any" : "all";
 
-  if (clauses.length === 1) {
+  if (clauses.length === 1 && mode === "all") {
     const clause = clauses[0];
     if (hasTime) return clause;
     return { ...clause, pollInterval };
   }
 
-  if (hasTime) return { all: clauses };
-  return { all: clauses, pollInterval };
+  const block: RuleIfBlock = { [key]: clauses };
+  if (!hasTime) block.pollInterval = pollInterval;
+  return block;
 }
 
-export function serializeThen(clauses: RuleThenClause[]): RuleThen {
+export function serializeThen(clauses: RuleThenClause[]): RuleThen | undefined {
+  if (clauses.length === 0) return undefined;
   if (clauses.length === 1) return clauses[0];
   return { all: clauses };
 }
 
 export function clauseLabel(
-  integrations: { id: string; name: string; triggers?: { id: string; label: string }[]; actions?: { id: string; label: string }[] }[],
+  integrations: {
+    id: string;
+    name: string;
+    triggers?: { id: string; label: string }[];
+    actions?: { id: string; label: string }[];
+  }[],
   clause: RuleIfClause | RuleThenClause,
   side: "if" | "then",
 ) {
@@ -135,4 +161,3 @@ export function formatClauseOverview(
   const summary = formatClauseConfigSummary(integrations, clause, side);
   return summary.join(" · ");
 }
-

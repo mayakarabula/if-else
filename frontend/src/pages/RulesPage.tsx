@@ -19,8 +19,10 @@ function RuleCard({
   onRun: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const ifClauses = normalizeIf(rule.if).all;
+  const ifClauses = normalizeIf(rule.if).clauses;
   const thenClauses = normalizeThen(rule.then).all;
+  const elseClauses = normalizeThen(rule.else).all;
+  const catchClauses = normalizeThen(rule.catch).all;
 
   return (
     <Card
@@ -56,6 +58,34 @@ function RuleCard({
             size="sm"
           />
         ))}
+        {elseClauses.length > 0 && (
+          <>
+            <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>
+              ELSE
+            </Typography.Text>
+            {elseClauses.map((clause, index) => (
+              <IntegrationIcon
+                key={`else-${clause.integration}-${index}`}
+                integration={getIntegration(integrations, clause.integration)}
+                size="sm"
+              />
+            ))}
+          </>
+        )}
+        {catchClauses.length > 0 && (
+          <>
+            <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>
+              CATCH
+            </Typography.Text>
+            {catchClauses.map((clause, index) => (
+              <IntegrationIcon
+                key={`catch-${clause.integration}-${index}`}
+                integration={getIntegration(integrations, clause.integration)}
+                size="sm"
+              />
+            ))}
+          </>
+        )}
       </Space>
     </Card>
   );

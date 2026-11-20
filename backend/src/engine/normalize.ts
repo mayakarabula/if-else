@@ -1,7 +1,10 @@
 import type { RuleIf, RuleIfClause, RuleThen, RuleThenClause } from "../store/rules.js";
 
+export type ConditionMode = "all" | "any";
+
 export interface NormalizedIf {
-  all: RuleIfClause[];
+  mode: ConditionMode;
+  clauses: RuleIfClause[];
   pollInterval?: string;
 }
 
@@ -9,8 +12,12 @@ export interface NormalizedThen {
   all: RuleThenClause[];
 }
 
-function isIfBlock(value: RuleIf): value is { all: RuleIfClause[]; pollInterval?: string } {
-  return "all" in value && Array.isArray(value.all);
+function isIfBlock(value: RuleIf): value is {
+  all?: RuleIfClause[];
+  any?: RuleIfClause[];
+  pollInterval?: string;
+} {
+  return typeof value === "object" && value !== null && ("all" in value || "any" in value);
 }
 
 function isThenBlock(value: RuleThen): value is { all: RuleThenClause[] } {
@@ -19,15 +26,19 @@ function isThenBlock(value: RuleThen): value is { all: RuleThenClause[] } {
 
 export function normalizeIf(ifBlock: RuleIf): NormalizedIf {
   if (isIfBlock(ifBlock)) {
-    return { all: ifBlock.all, pollInterval: ifBlock.pollInterval };
+    if (Array.isArray(ifBlock.any) && ifBlock.any.length > 0) {
+      return { mode: "any", clauses: ifBlock.any, pollInterval: ifBlock.pollInterval };
+    }
+    return { mode: "all", clauses: ifBlock.all ?? [], pollInterval: ifBlock.pollInterval };
   }
 
   const legacy = ifBlock as RuleIfClause & { pollInterval?: string };
   const { pollInterval, ...clause } = legacy;
-  return { all: [clause], pollInterval };
+  return { mode: "all", clauses: [clause], pollInterval };
 }
 
-export function normalizeThen(thenBlock: RuleThen): NormalizedThen {
+export function normalizeThen(thenBlock: RuleThen | undefined | null): NormalizedThen {
+  if (!thenBlock) return { all: [] };
   if (isThenBlock(thenBlock)) {
     return { all: thenBlock.all };
   }
@@ -40,7 +51,7 @@ export function clauseKey(clause: RuleIfClause): string {
 }
 
 export function ruleHasTimeTrigger(ifBlock: RuleIf): boolean {
-  return normalizeIf(ifBlock).all.some((clause) => clause.integration === "time");
+  return normalizeIf(ifBlock).clauses.some((clause) => clause.integration === "time");
 }
 
 export function rulePollInterval(ifBlock: RuleIf): number {
