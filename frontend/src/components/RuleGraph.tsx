@@ -316,9 +316,6 @@ export function RuleGraph({
           >
             <path d="M 0 0 L 10 5 L 0 10 z" fill={token.colorTextSecondary} opacity="0.55" />
           </marker>
-          <filter id="node-shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.12" />
-          </filter>
         </defs>
 
         <g className="viewport">
