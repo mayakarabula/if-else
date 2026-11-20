@@ -72,6 +72,7 @@ export interface Rule {
   if: RuleIf;
   then: RuleThen;
   else?: RuleThen;
+  catch?: RuleThen;
   createdAt?: string;
   updatedAt?: string;
 }

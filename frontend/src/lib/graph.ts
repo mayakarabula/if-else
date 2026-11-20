@@ -11,7 +11,7 @@ import {
   type RuleThenClause,
 } from "./rules";
 
-export type GraphNodeKind = "if" | "and" | "or" | "then" | "else";
+export type GraphNodeKind = "if" | "and" | "or" | "then" | "else" | "catch";
 
 export interface GraphNode {
   id: string;
@@ -20,7 +20,7 @@ export interface GraphNode {
   /** Condition nodes (if / and / or) */
   integration: string | null;
   trigger: string | null;
-  /** Action nodes (then / else) */
+  /** Action nodes (then / else / catch) */
   action: string | null;
   config: Record<string, unknown>;
   /** condition gates; source supplies template data */
@@ -61,7 +61,7 @@ export function isConditionKind(kind: GraphNodeKind): boolean {
 }
 
 export function isActionKind(kind: GraphNodeKind): boolean {
-  return kind === "then" || kind === "else";
+  return kind === "then" || kind === "else" || kind === "catch";
 }
 
 export function isConditionConfigured(node: GraphNode): boolean {
@@ -83,6 +83,8 @@ export function allowedChildKinds(node: GraphNode, nodes: GraphNode[]): GraphNod
     const kinds: GraphNodeKind[] = ["and", "or", "then"];
     const hasElse = kids.some((k) => k.kind === "else") || nodes.some((n) => n.kind === "else");
     if (!hasElse) kinds.push("else");
+    const hasCatch = kids.some((k) => k.kind === "catch") || nodes.some((n) => n.kind === "catch");
+    if (!hasCatch) kinds.push("catch");
     return kinds;
   }
 
@@ -98,7 +100,7 @@ export function addChild(state: GraphState, parentId: string, kind: GraphNodeKin
   if (!parent) return state;
   if (!allowedChildKinds(parent, state.nodes).includes(kind)) return state;
 
-  // Extra actions hang off Then/Else as another Then/Else; the edge is labeled AND.
+  // Extra actions hang off Then/Else/Catch as another same-kind node; the edge is labeled AND.
   const childKind: GraphNodeKind =
     kind === "and" && isActionKind(parent.kind) ? parent.kind : kind;
 
@@ -138,6 +140,7 @@ export function graphToRulePayload(state: GraphState): {
   if: RuleIf;
   then: RuleThen;
   else?: RuleThen;
+  catch?: RuleThen;
 } {
   const conditionNodes = state.nodes.filter(
     (n) => isConditionKind(n.kind) && isConditionConfigured(n) && n.slot === "condition",
@@ -154,6 +157,7 @@ export function graphToRulePayload(state: GraphState): {
 
   const thenNodes = state.nodes.filter((n) => n.kind === "then" && isActionConfigured(n));
   const elseNodes = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
+  const catchNodes = state.nodes.filter((n) => n.kind === "catch" && isActionConfigured(n));
 
   const thenClauses: RuleThenClause[] = thenNodes.map((n) => ({
     integration: n.integration!,
@@ -167,23 +171,37 @@ export function graphToRulePayload(state: GraphState): {
     config: n.config,
   }));
 
+  const catchClauses: RuleThenClause[] = catchNodes.map((n) => ({
+    integration: n.integration!,
+    action: n.action!,
+    config: n.config,
+  }));
+
   const mode = conditionMode(state.nodes);
   const ifBlock = serializeIf(ifClauses, state.pollInterval, mode);
-  // Persist an empty then block when only else is configured so the rule shape stays stable.
+  // Persist an empty then block when only else/catch is configured so the rule shape stays stable.
   const thenBlock = serializeThen(thenClauses) ?? { all: [] as RuleThenClause[] };
   const elseBlock = serializeThen(elseClauses);
+  const catchBlock = serializeThen(catchClauses);
 
-  return elseBlock ? { if: ifBlock, then: thenBlock, else: elseBlock } : { if: ifBlock, then: thenBlock };
+  return {
+    if: ifBlock,
+    then: thenBlock,
+    ...(elseBlock ? { else: elseBlock } : {}),
+    ...(catchBlock ? { catch: catchBlock } : {}),
+  };
 }
 
 export function ruleToGraph(rule: {
   if: RuleIf;
   then: RuleThen;
   else?: RuleThen;
+  catch?: RuleThen;
 }): GraphState {
   const ifBlock = normalizeIf(rule.if);
   const thenBlock = normalizeThen(rule.then);
   const elseBlock = normalizeThen(rule.else);
+  const catchBlock = normalizeThen(rule.catch);
   const mode = ifBlock.mode;
 
   const nodes: GraphNode[] = [];
@@ -196,8 +214,6 @@ export function ruleToGraph(rule: {
     node.integration = clause.integration;
     node.trigger = clause.trigger;
     node.config = clause.config;
-    // Infer source vs condition from trigger kind is done by caller if needed;
-    // default condition — RuleForm will refine with integrations.
     nodes.push(node);
     parentId = node.id;
   });
@@ -221,6 +237,16 @@ export function ruleToGraph(rule: {
   elseBlock.all.forEach((clause, index) => {
     const parent = index === 0 ? attachPoint : nodes.filter((n) => n.kind === "else").at(-1)?.id ?? attachPoint;
     const node = createNode("else", parent);
+    node.integration = clause.integration;
+    node.action = clause.action;
+    node.config = clause.config;
+    nodes.push(node);
+  });
+
+  catchBlock.all.forEach((clause, index) => {
+    const parent =
+      index === 0 ? attachPoint : nodes.filter((n) => n.kind === "catch").at(-1)?.id ?? attachPoint;
+    const node = createNode("catch", parent);
     node.integration = clause.integration;
     node.action = clause.action;
     node.config = clause.config;
@@ -253,12 +279,13 @@ export function graphValidation(state: GraphState): { ok: boolean; message?: str
   );
   const thens = state.nodes.filter((n) => n.kind === "then" && isActionConfigured(n));
   const elses = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
+  const catches = state.nodes.filter((n) => n.kind === "catch" && isActionConfigured(n));
 
   if (conditions.length === 0) {
     return { ok: false, message: "Add at least one If condition." };
   }
-  if (thens.length === 0 && elses.length === 0) {
-    return { ok: false, message: "Add a Then or Else action." };
+  if (thens.length === 0 && elses.length === 0 && catches.length === 0) {
+    return { ok: false, message: "Add a Then, Else, or Catch action." };
   }
   return { ok: true };
 }
@@ -269,4 +296,5 @@ export const NODE_COLORS: Record<GraphNodeKind, { fill: string; stroke: string; 
   or: { fill: "#5b7c99", stroke: "#4a6780", label: "OR" },
   then: { fill: "#3d6b4f", stroke: "#2f5440", label: "THEN" },
   else: { fill: "#8b4d3b", stroke: "#6f3d2f", label: "ELSE" },
+  catch: { fill: "#b45309", stroke: "#92400e", label: "CATCH" },
 };

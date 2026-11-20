@@ -49,6 +49,8 @@ export interface Rule {
   then: RuleThen;
   /** Actions to run when the If conditions do not pass. */
   else?: RuleThen;
+  /** Actions to run when a trigger or action throws during execution. */
+  catch?: RuleThen;
   createdAt?: string;
   updatedAt?: string;
 }

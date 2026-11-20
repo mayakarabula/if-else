@@ -102,10 +102,19 @@ export function GraphNodeConfigModal({
       config: n.config,
       slot: n.slot,
     }));
-  const argumentItems = useMemo(
-    () => buildArgumentItems(ifClauses, integrations),
-    [ifClauses, integrations],
-  );
+  const argumentItems = useMemo(() => {
+    const items = buildArgumentItems(ifClauses, integrations);
+    if (node?.kind === "catch") {
+      items.unshift({
+        token: "{{error.message}}",
+        short: "error.message",
+        label: "Error message",
+        description: "Message from the failed trigger or action",
+        groupLabel: "Catch",
+      });
+    }
+    return items;
+  }, [ifClauses, integrations, node?.kind]);
 
   const options = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -197,16 +206,18 @@ export function GraphNodeConfigModal({
     !node
       ? ""
       : isSource
-        ? "This node supplies data you can insert into Then / Else actions."
+        ? "This node supplies data you can insert into Then / Else / Catch actions."
         : node.kind === "or"
           ? "OR — alternative condition. If any OR branch passes, the rule continues."
           : node.kind === "and"
             ? "AND — this condition must also pass."
             : node.kind === "else"
               ? "ELSE — runs when the If conditions do not pass."
-              : node.kind === "then"
-                ? "THEN — runs when the If conditions pass."
-                : "IF — the starting condition for this automation.";
+              : node.kind === "catch"
+                ? "CATCH — runs when a trigger or action throws. Use {{error.message}} in templates."
+                : node.kind === "then"
+                  ? "THEN — runs when the If conditions pass."
+                  : "IF — the starting condition for this automation.";
 
   return (
     <Modal

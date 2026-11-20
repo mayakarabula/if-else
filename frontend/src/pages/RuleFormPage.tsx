@@ -180,8 +180,8 @@ export function RuleFormPage() {
         {isEditing ? "Edit rule" : "Create rule"}
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ maxWidth: 640 }}>
-        Start from an IF node, then grow the flow with AND / OR conditions and THEN / ELSE actions.
-        Use the gear on a node to configure it.
+        Start from an IF node, then grow the flow with AND / OR conditions and THEN / ELSE / CATCH
+        actions. Use the gear on a node to configure it.
       </Typography.Paragraph>
 
       <div

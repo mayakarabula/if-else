@@ -60,7 +60,7 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
   const sortKids = (kids: GraphNode[]) =>
     [...kids].sort((a, b) => {
       const order = (k: GraphNodeKind) =>
-        k === "and" || k === "or" ? 0 : k === "then" ? 1 : k === "else" ? 2 : 3;
+        k === "and" || k === "or" ? 0 : k === "then" ? 1 : k === "else" ? 2 : k === "catch" ? 3 : 4;
       return order(a.kind) - order(b.kind) || a.id.localeCompare(b.id);
     });
 
@@ -95,6 +95,8 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
       let label: string | undefined;
       if (child.node.kind === "and" || child.node.kind === "or") {
         label = child.node.kind.toUpperCase();
+      } else if (child.node.kind === "catch" && !isActionKind(node.kind)) {
+        label = "ERROR";
       } else if (
         isActionKind(node.kind) &&
         isActionKind(child.node.kind) &&
@@ -335,9 +337,9 @@ export function RuleGraph({
                 {link.label && (
                   <g transform={`translate(${midX}, ${midY})`}>
                     <rect
-                      x={-18}
+                      x={-(link.label.length * 3.6 + 10)}
                       y={-10}
-                      width={36}
+                      width={link.label.length * 7.2 + 20}
                       height={20}
                       rx={6}
                       fill={token.colorBgContainer}
@@ -498,7 +500,7 @@ export function RuleGraph({
         }}
       >
         <Space size={8} wrap>
-          {(["if", "and", "or", "then", "else"] as GraphNodeKind[]).map((kind) => (
+          {(["if", "and", "or", "then", "else", "catch"] as GraphNodeKind[]).map((kind) => (
             <span
               key={kind}
               style={{

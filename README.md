@@ -2,7 +2,7 @@
 
 Simple if-this-then-that automations with a React UI and Node backend.
 
-Rule setup uses a **d3 flow graph**: start from an **IF** node, then branch with **AND** / **OR** conditions and **THEN** / **ELSE** actions.
+Rule setup uses a **d3 flow graph**: start from an **IF** node, then branch with **AND** / **OR** conditions and **THEN** / **ELSE** / **CATCH** actions.
 
 ## Architecture
 

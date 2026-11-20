@@ -40,6 +40,7 @@ rulesRouter.post("/", async (req, res) => {
     if: body.if!,
     then: body.then!,
     ...(body.else ? { else: body.else } : {}),
+    ...(body.catch ? { catch: body.catch } : {}),
   };
 
   const saved = await saveRule(rule);
@@ -58,8 +59,9 @@ rulesRouter.put("/:id", async (req, res) => {
     ...existing,
     ...body,
     id: existing.id,
-    // Allow clearing else when the client omits it.
+    // Allow clearing else/catch when the client omits them.
     else: body.else,
+    catch: body.catch,
   });
   res.json(saved);
 });

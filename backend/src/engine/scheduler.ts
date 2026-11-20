@@ -113,6 +113,10 @@ async function runActions(
   }
 }
 
+function errorMessage(err: unknown) {
+  return err instanceof Error ? err.message : "Unknown error";
+}
+
 /** Evaluate a rule immediately (worker). Prefer enqueueing via the queue from the API. */
 export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): Promise<RunLog> {
   const base: Omit<RunLog, "status" | "message"> = {
@@ -131,9 +135,10 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
   const ifBlock = normalizeIf(rule.if);
   const thenBlock = normalizeThen(rule.then);
   const elseBlock = normalizeThen(rule.else);
+  const catchBlock = normalizeThen(rule.catch);
   const integrationConfig = await loadIntegrationConfig();
 
-  for (const clause of [...thenBlock.all, ...elseBlock.all]) {
+  for (const clause of [...thenBlock.all, ...elseBlock.all, ...catchBlock.all]) {
     if (!getAction(clause.integration, clause.action)) {
       const run: RunLog = {
         ...base,
@@ -145,9 +150,12 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
     }
   }
 
+  let lastTriggerData: Record<string, unknown> = {};
+
   try {
     const state = ruleStates.get(rule.id) ?? { lastChecked: 0, clauses: {} };
     const result = await evaluateIfBlock(ifBlock, state, integrationConfig, options?.manual);
+    lastTriggerData = result.data;
 
     ruleStates.set(rule.id, {
       lastChecked: Date.now(),
@@ -170,6 +178,7 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
           if (clauseResult.state) clauseStates[key] = clauseResult.state;
           data[clause.integration] = clauseResult.data;
         }
+        lastTriggerData = data;
 
         await runActions(elseBlock.all, integrationConfig, data);
 
@@ -243,10 +252,40 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
     await appendRun(run);
     return run;
   } catch (err) {
+    const message = errorMessage(err);
+    const triggerData = {
+      ...lastTriggerData,
+      error: { message },
+    };
+
+    if (catchBlock.all.length > 0) {
+      try {
+        await runActions(catchBlock.all, integrationConfig, triggerData);
+        const run: RunLog = {
+          ...base,
+          status: "error",
+          message: `Caught error: ${message}`,
+          triggerData,
+        };
+        await appendRun(run);
+        return run;
+      } catch (catchErr) {
+        const run: RunLog = {
+          ...base,
+          status: "error",
+          message: `${message} (catch failed: ${errorMessage(catchErr)})`,
+          triggerData,
+        };
+        await appendRun(run);
+        return run;
+      }
+    }
+
     const run: RunLog = {
       ...base,
       status: "error",
-      message: err instanceof Error ? err.message : "Unknown error",
+      message,
+      triggerData,
     };
     await appendRun(run);
     return run;
