@@ -215,7 +215,7 @@ export function RuleGraph({
     return ids;
   }, [selectedId, state.nodes]);
 
-  const PATH_BLUE = "#2563eb";
+  const PATH_BLUE = "#7aa2d4";
 
   useEffect(() => {
     const el = containerRef.current;
@@ -374,8 +374,8 @@ export function RuleGraph({
                   d={linkPath(link)}
                   fill="none"
                   stroke={onPath ? PATH_BLUE : token.colorTextSecondary}
-                  strokeOpacity={onPath ? 0.95 : 0.45}
-                  strokeWidth={onPath ? 3 : 2}
+                  strokeOpacity={onPath ? 0.9 : 0.45}
+                  strokeWidth={2}
                   markerEnd={onPath ? "url(#rule-arrow-path)" : "url(#rule-arrow)"}
                 />
                 {link.label && (
