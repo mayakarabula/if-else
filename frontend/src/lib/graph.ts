@@ -100,7 +100,8 @@ export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNo
   }
 
   if (isActionKind(node.kind)) {
-    return ["and"];
+    // SOURCE from any action node; AND adds another action of the same kind.
+    return ["source", "and"];
   }
 
   return [];
