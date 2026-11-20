@@ -16,7 +16,8 @@ import {
   isActionConfigured,
   isActionKind,
   isConditionConfigured,
-  isConditionKind,
+  isSourceKind,
+  isTriggerKind,
   type GraphNode,
   type GraphNodeKind,
   type GraphState,
@@ -60,7 +61,17 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
   const sortKids = (kids: GraphNode[]) =>
     [...kids].sort((a, b) => {
       const order = (k: GraphNodeKind) =>
-        k === "and" || k === "or" ? 0 : k === "then" ? 1 : k === "else" ? 2 : k === "catch" ? 3 : 4;
+        k === "and" || k === "or"
+          ? 0
+          : k === "source"
+            ? 1
+            : k === "then"
+              ? 2
+              : k === "else"
+                ? 3
+                : k === "catch"
+                  ? 4
+                  : 5;
       return order(a.kind) - order(b.kind) || a.id.localeCompare(b.id);
     });
 
@@ -95,6 +106,8 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
       let label: string | undefined;
       if (child.node.kind === "and" || child.node.kind === "or") {
         label = child.node.kind.toUpperCase();
+      } else if (child.node.kind === "source") {
+        label = isSourceKind(node.kind) ? "AND" : "SOURCE";
       } else if (child.node.kind === "catch" && !isActionKind(node.kind)) {
         label = "ERROR";
       } else if (
@@ -124,8 +137,10 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
 }
 
 function nodeSubtitle(node: GraphNode, integrations: Integration[]): string {
-  if (isConditionKind(node.kind)) {
-    if (!isConditionConfigured(node)) return "Pick a condition…";
+  if (isTriggerKind(node.kind)) {
+    if (!isConditionConfigured(node)) {
+      return isSourceKind(node.kind) ? "Pick a data source…" : "Pick a condition…";
+    }
     const overview = formatClauseOverview(
       integrations,
       { integration: node.integration!, trigger: node.trigger!, config: node.config },
@@ -154,9 +169,11 @@ function nodeSubtitle(node: GraphNode, integrations: Integration[]): string {
 }
 
 function kindLabel(node: GraphNode, nodes: GraphNode[]): string {
-  if (isActionKind(node.kind) && node.parentId) {
+  if (node.parentId) {
     const parent = nodes.find((n) => n.id === node.parentId);
-    if (parent && parent.kind === node.kind) return "AND";
+    if (parent && parent.kind === node.kind && (isActionKind(node.kind) || isSourceKind(node.kind))) {
+      return "AND";
+    }
   }
   return NODE_COLORS[node.kind].label;
 }
@@ -500,7 +517,7 @@ export function RuleGraph({
         }}
       >
         <Space size={8} wrap>
-          {(["if", "and", "or", "then", "else", "catch"] as GraphNodeKind[]).map((kind) => (
+          {(["if", "and", "or", "source", "then", "else", "catch"] as GraphNodeKind[]).map((kind) => (
             <span
               key={kind}
               style={{

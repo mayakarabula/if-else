@@ -7,7 +7,8 @@ import { IntegrationIcon } from "./ui";
 import { buildArgumentItems } from "./AvailableVariables";
 import {
   isActionKind,
-  isConditionKind,
+  isSourceKind,
+  isTriggerKind,
   type GraphNode,
   type GraphState,
 } from "../lib/graph";
@@ -94,19 +95,19 @@ export function GraphNodeConfigModal({
   const [search, setSearch] = useState("");
   const [picking, setPicking] = useState(false);
 
-  const isCondition = node ? isConditionKind(node.kind) : false;
   const isAction = node ? isActionKind(node.kind) : false;
-  const isSource = node?.slot === "source";
+  const isSource = node ? isSourceKind(node.kind) || node.slot === "source" : false;
+  const isTrigger = node ? isTriggerKind(node.kind) : false;
 
   const selectedIntegration = integrations.find((item) => item.id === node?.integration);
   const selectedTrigger = selectedIntegration?.triggers?.find((item) => item.id === node?.trigger);
   const selectedAction = selectedIntegration?.actions?.find((item) => item.id === node?.action);
-  const hasSelection = isCondition
+  const hasSelection = isTrigger
     ? Boolean(node?.integration && node?.trigger)
     : Boolean(node?.integration && node?.action);
 
   const ifClauses = graph.nodes
-    .filter((n) => isConditionKind(n.kind))
+    .filter((n) => isTriggerKind(n.kind))
     .map((n) => ({
       key: n.id,
       integration: n.integration,
@@ -130,7 +131,7 @@ export function GraphNodeConfigModal({
 
   const options = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (isCondition) {
+    if (isTrigger) {
       return integrations
         .filter((integration) => integration.triggers?.length)
         .flatMap((integration) =>
@@ -167,14 +168,14 @@ export function GraphNodeConfigModal({
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(query));
       });
-  }, [integrations, search, isCondition, isSource]);
+  }, [integrations, search, isTrigger, isSource]);
 
   const showPicker = !hasSelection || picking;
   const kindLabel = node?.kind.toUpperCase() ?? "Node";
 
   const overview =
     hasSelection && node
-      ? isCondition && node.integration && node.trigger
+      ? isTrigger && node.integration && node.trigger
         ? formatClauseOverview(
             integrations,
             { integration: node.integration, trigger: node.trigger, config: node.config },
@@ -191,12 +192,14 @@ export function GraphNodeConfigModal({
 
   function selectTrigger(integrationId: string, trigger: TriggerMeta) {
     const same = node?.integration === integrationId && node?.trigger === trigger.id;
+    const asSource = isSource || trigger.kind === "data";
     onChange({
       integration: integrationId,
       trigger: trigger.id,
       action: null,
       config: same ? node!.config : defaultConfig(trigger.fields),
-      slot: trigger.kind === "data" ? "source" : "condition",
+      slot: asSource ? "source" : "condition",
+      ...(asSource && node && !isSourceKind(node.kind) ? { kind: "source" as const } : {}),
     });
     setPicking(false);
     setSearch("");
@@ -218,7 +221,7 @@ export function GraphNodeConfigModal({
     !node
       ? ""
       : isSource
-        ? "This node supplies data you can insert into Then / Else / Catch actions."
+        ? "SOURCE — optional data (like weather) you can insert into Then / Else / Catch fields."
         : node.kind === "or"
           ? "OR — alternative condition. If any OR branch passes, the rule continues."
           : node.kind === "and"
@@ -265,7 +268,7 @@ export function GraphNodeConfigModal({
                 allowClear
                 autoFocus
                 placeholder={
-                  isCondition
+                  isTrigger
                     ? isSource
                       ? "Search integrations or sources"
                       : "Search integrations or conditions"
@@ -284,7 +287,13 @@ export function GraphNodeConfigModal({
                 {options.length === 0 ? (
                   <Empty
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description={isCondition ? "No matching conditions" : "No matching actions"}
+                    description={
+                      isTrigger
+                        ? isSource
+                          ? "No matching sources"
+                          : "No matching conditions"
+                        : "No matching actions"
+                    }
                   />
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
@@ -344,7 +353,7 @@ export function GraphNodeConfigModal({
                     <div>
                       <Typography.Text type="secondary">
                         {overview ||
-                          (isCondition ? selectedTrigger?.label : selectedAction?.label) ||
+                          (isTrigger ? selectedTrigger?.label : selectedAction?.label) ||
                           "Selected"}
                       </Typography.Text>
                     </div>
@@ -355,7 +364,7 @@ export function GraphNodeConfigModal({
                 </Button>
               </div>
 
-              {isCondition && selectedTrigger && selectedTrigger.fields.length > 0 && (
+              {isTrigger && selectedTrigger && selectedTrigger.fields.length > 0 && (
                 <ConfigFields
                   fields={selectedTrigger.fields}
                   values={node.config}
@@ -372,7 +381,7 @@ export function GraphNodeConfigModal({
                 />
               )}
 
-              {((isCondition && selectedTrigger && selectedTrigger.fields.length === 0) ||
+              {((isTrigger && selectedTrigger && selectedTrigger.fields.length === 0) ||
                 (isAction && selectedAction && selectedAction.fields.length === 0)) && (
                 <Typography.Text type="secondary">No extra fields for this step.</Typography.Text>
               )}
