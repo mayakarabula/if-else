@@ -35,7 +35,8 @@ html[data-theme="dark"] body {
 }
 
 .rule-graph-add,
-.rule-graph-remove {
+.rule-graph-remove,
+.rule-graph-configure {
   width: 22px;
   height: 22px;
   border-radius: 999px;
@@ -50,7 +51,8 @@ html[data-theme="dark"] body {
   box-shadow: 0 1px 4px rgba(42, 38, 31, 0.12);
 }
 
-.rule-graph-add:hover {
+.rule-graph-add:hover,
+.rule-graph-configure:hover {
   background: #a07a3a;
   border-color: #a07a3a;
   color: #fff;

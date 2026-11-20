@@ -4,6 +4,7 @@ import { Button, Dropdown, Space, Typography, theme } from "antd";
 import {
   DeleteOutlined,
   PlusOutlined,
+  SettingOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
   AimOutlined,
@@ -22,10 +23,11 @@ import {
 } from "../lib/graph";
 import { clauseLabel, formatClauseOverview } from "../lib/rules";
 
-const NODE_W = 168;
-const NODE_H = 72;
+const NODE_W = 188;
+const NODE_H = 84;
 const H_GAP = 56;
 const V_GAP = 36;
+const ACCENT_W = 5;
 
 interface LayoutNode {
   id: string;
@@ -55,7 +57,6 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
     byParent.set(key, list);
   }
 
-  // Stable order: conditions first (and/or), then then, then else
   const sortKids = (kids: GraphNode[]) =>
     [...kids].sort((a, b) => {
       const order = (k: GraphNodeKind) =>
@@ -109,7 +110,6 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
 
   place(root, 0);
 
-  // Normalize y so min is padding
   const pad = 24;
   const minY = Math.min(...laid.map((n) => n.y), 0);
   for (const n of laid) n.y = n.y - minY + pad;
@@ -164,6 +164,7 @@ export function RuleGraph({
   integrations,
   selectedId,
   onSelect,
+  onConfigure,
   onAddChild,
   onRemove,
 }: {
@@ -171,6 +172,7 @@ export function RuleGraph({
   integrations: Integration[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  onConfigure: (id: string) => void;
   onAddChild: (parentId: string, kind: GraphNodeKind) => void;
   onRemove: (id: string) => void;
 }) {
@@ -211,7 +213,6 @@ export function RuleGraph({
     zoomRef.current = zoom;
     svg.call(zoom);
 
-    // Fit content on first layout / when graph size changes a lot
     const scale = Math.min(1, (viewport.w - 40) / Math.max(width, 1), (viewport.h - 40) / Math.max(height, 1));
     const tx = (viewport.w - width * scale) / 2;
     const ty = Math.max(16, (viewport.h - height * scale) / 2);
@@ -364,9 +365,6 @@ export function RuleGraph({
           {laid.map((item) => {
             const colors = NODE_COLORS[item.node.kind];
             const selected = selectedId === item.id;
-            const configured = isConditionKind(item.node.kind)
-              ? isConditionConfigured(item.node)
-              : isActionConfigured(item.node);
             const addOptions = allowedChildKinds(item.node, state.nodes);
             const canRemove = !(item.node.kind === "if" && item.node.parentId === null);
             const title = kindLabel(item.node, state.nodes);
@@ -382,44 +380,49 @@ export function RuleGraph({
                   onSelect(item.id);
                 }}
               >
+                <defs>
+                  <clipPath id={`node-clip-${item.id}`}>
+                    <rect width={NODE_W} height={NODE_H} rx={12} />
+                  </clipPath>
+                </defs>
+                <g clipPath={`url(#node-clip-${item.id})`}>
+                  <rect
+                    width={NODE_W}
+                    height={NODE_H}
+                    fill={token.colorBgContainer}
+                    filter="url(#node-shadow)"
+                    className="rule-graph-node"
+                  />
+                  {/* Kind accent — left border only */}
+                  <rect width={ACCENT_W} height={NODE_H} fill={colors.fill} />
+                </g>
                 <rect
                   width={NODE_W}
                   height={NODE_H}
                   rx={12}
-                  fill={configured ? colors.fill : token.colorBgContainer}
-                  stroke={selected ? token.colorPrimary : configured ? colors.stroke : token.colorBorder}
-                  strokeWidth={selected ? 3 : 1.5}
-                  filter="url(#node-shadow)"
-                  className="rule-graph-node"
-                >
-                  <title>{title}</title>
-                </rect>
-
-                {/* accent bar */}
-                <rect
-                  width={6}
-                  height={NODE_H}
-                  rx={3}
-                  fill={configured ? "rgba(255,255,255,0.35)" : colors.fill}
+                  fill="none"
+                  stroke={selected ? token.colorPrimary : token.colorBorder}
+                  strokeWidth={selected ? 2.5 : 1.25}
+                  pointerEvents="none"
                 />
 
                 <text
-                  x={18}
-                  y={22}
+                  x={ACCENT_W + 12}
+                  y={24}
                   fontSize={11}
                   fontWeight={800}
                   letterSpacing="0.08em"
-                  fill={configured ? "#fff" : colors.fill}
+                  fill={colors.fill}
                 >
                   {title}
                 </text>
 
-                <foreignObject x={14} y={30} width={NODE_W - 28} height={34}>
+                <foreignObject x={ACCENT_W + 10} y={32} width={NODE_W - ACCENT_W - 44} height={42}>
                   <div
                     style={{
                       fontSize: 11,
-                      lineHeight: 1.25,
-                      color: configured ? "rgba(255,255,255,0.88)" : token.colorTextSecondary,
+                      lineHeight: 1.3,
+                      color: token.colorTextSecondary,
                       overflow: "hidden",
                       display: "-webkit-box",
                       WebkitLineClamp: 2,
@@ -431,9 +434,22 @@ export function RuleGraph({
                   </div>
                 </foreignObject>
 
-                {/* add button */}
+                <foreignObject x={NODE_W - 34} y={8} width={28} height={28}>
+                  <button
+                    type="button"
+                    className="rule-graph-configure"
+                    title="Configure"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onConfigure(item.id);
+                    }}
+                  >
+                    <SettingOutlined style={{ fontSize: 12 }} />
+                  </button>
+                </foreignObject>
+
                 {addOptions.length > 0 && (
-                  <foreignObject x={NODE_W - 28} y={-10} width={36} height={28}>
+                  <foreignObject x={NODE_W - 28} y={NODE_H - 14} width={36} height={28}>
                     <Dropdown
                       trigger={["click"]}
                       menu={{
@@ -457,7 +473,7 @@ export function RuleGraph({
                 )}
 
                 {canRemove && (
-                  <foreignObject x={NODE_W - 28} y={NODE_H - 18} width={36} height={28}>
+                  <foreignObject x={NODE_W - 56} y={NODE_H - 14} width={28} height={28}>
                     <button
                       type="button"
                       className="rule-graph-remove"
@@ -513,4 +529,3 @@ export function RuleGraph({
     </div>
   );
 }
-

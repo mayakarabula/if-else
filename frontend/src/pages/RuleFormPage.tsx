@@ -4,7 +4,6 @@ import {
   Alert,
   App,
   Button,
-  Empty,
   Form,
   Input,
   Space,
@@ -14,12 +13,7 @@ import {
   theme,
 } from "antd";
 import { api, type Integration } from "../api/client";
-import {
-  IfClauseEditor,
-  ThenClauseEditor,
-  type ActionClauseFormState,
-  type ClauseFormState,
-} from "../components/ClauseEditors";
+import { GraphNodeConfigModal } from "../components/GraphNodeConfigModal";
 import { RuleGraph } from "../components/RuleGraph";
 import { FieldInput, formLayout } from "../components/ui";
 import {
@@ -27,7 +21,6 @@ import {
   createEmptyGraph,
   graphToRulePayload,
   graphValidation,
-  isActionKind,
   isConditionKind,
   refineGraphSlots,
   removeNode,
@@ -37,25 +30,6 @@ import {
   type GraphNodeKind,
   type GraphState,
 } from "../lib/graph";
-
-function graphNodeToIfClause(node: GraphNode): ClauseFormState {
-  return {
-    key: node.id,
-    integration: node.integration,
-    trigger: node.trigger,
-    config: node.config,
-    slot: node.slot,
-  };
-}
-
-function graphNodeToThenClause(node: GraphNode): ActionClauseFormState {
-  return {
-    key: node.id,
-    integration: node.integration,
-    action: node.action,
-    config: node.config,
-  };
-}
 
 export function RuleFormPage() {
   const { message } = App.useApp();
@@ -70,6 +44,7 @@ export function RuleFormPage() {
   const [enabled, setEnabled] = useState(true);
   const [graph, setGraph] = useState<GraphState>(createEmptyGraph);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,22 +86,31 @@ export function RuleFormPage() {
   const hasTimeClause = graph.nodes.some(
     (n) => isConditionKind(n.kind) && n.integration === "time" && n.trigger,
   );
-  const ifClausesForArgs = graph.nodes
-    .filter((n) => isConditionKind(n.kind))
-    .map(graphNodeToIfClause);
 
   function handleAddChild(parentId: string, kind: GraphNodeKind) {
     setGraph((current) => {
       const next = addChild(current, parentId, kind);
       const added = next.nodes.find((n) => !current.nodes.some((c) => c.id === n.id));
-      if (added) setSelectedId(added.id);
+      if (added) {
+        setSelectedId(added.id);
+        setConfigOpen(true);
+      }
       return next;
     });
   }
 
   function handleRemove(nodeId: string) {
     setGraph((current) => removeNode(current, nodeId));
-    setSelectedId((current) => (current === nodeId ? graph.nodes.find((n) => n.kind === "if")?.id ?? null : current));
+    setSelectedId((current) => {
+      if (current !== nodeId) return current;
+      setConfigOpen(false);
+      return graph.nodes.find((n) => n.kind === "if")?.id ?? null;
+    });
+  }
+
+  function handleConfigure(nodeId: string) {
+    setSelectedId(nodeId);
+    setConfigOpen(true);
   }
 
   function patchSelected(patch: Partial<GraphNode>) {
@@ -197,7 +181,7 @@ export function RuleFormPage() {
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ maxWidth: 640 }}>
         Start from an IF node, then grow the flow with AND / OR conditions and THEN / ELSE actions.
-        Click a node to configure it.
+        Use the gear on a node to configure it.
       </Typography.Paragraph>
 
       <div
@@ -288,91 +272,19 @@ export function RuleFormPage() {
         integrations={integrations}
         selectedId={selectedId}
         onSelect={setSelectedId}
+        onConfigure={handleConfigure}
         onAddChild={handleAddChild}
         onRemove={handleRemove}
       />
 
-      <div
-        style={{
-          marginTop: 20,
-          padding: 20,
-          borderRadius: token.borderRadiusLG,
-          background: token.colorBgContainer,
-          border: `1px solid ${token.colorBorderSecondary}`,
-          minHeight: 200,
-        }}
-      >
-        {!selected ? (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="Select a node on the graph to configure it"
-          />
-        ) : isConditionKind(selected.kind) ? (
-          <div>
-            <Typography.Title level={4} style={{ marginTop: 0 }}>
-              Configure · {selected.kind.toUpperCase()}
-            </Typography.Title>
-            <Typography.Paragraph type="secondary">
-              {selected.slot === "source"
-                ? "This node supplies data you can insert into Then / Else actions."
-                : selected.kind === "or"
-                  ? "OR — this condition is an alternative path. If any OR branch passes, the rule continues."
-                  : selected.kind === "and"
-                    ? "AND — this condition must also pass."
-                    : "IF — the starting condition for this automation."}
-            </Typography.Paragraph>
-            <div style={{ maxWidth: 360 }}>
-              <IfClauseEditor
-                clause={graphNodeToIfClause(selected)}
-                integrations={integrations}
-                slot={selected.slot}
-                title={`${selected.kind.toUpperCase()} condition`}
-                onChange={(next) =>
-                  patchSelected({
-                    integration: next.integration,
-                    trigger: next.trigger,
-                    config: next.config,
-                    slot: next.slot,
-                  })
-                }
-                onRemove={() => handleRemove(selected.id)}
-                canRemove={selected.kind !== "if"}
-                lockIntegration={false}
-                autoOpenPicker={!selected.integration}
-              />
-            </div>
-          </div>
-        ) : isActionKind(selected.kind) ? (
-          <div>
-            <Typography.Title level={4} style={{ marginTop: 0 }}>
-              Configure · {selected.kind.toUpperCase()}
-            </Typography.Title>
-            <Typography.Paragraph type="secondary">
-              {selected.kind === "else"
-                ? "ELSE — runs when the If conditions do not pass."
-                : "THEN — runs when the If conditions pass."}
-            </Typography.Paragraph>
-            <div style={{ maxWidth: 360 }}>
-              <ThenClauseEditor
-                clause={graphNodeToThenClause(selected)}
-                integrations={integrations}
-                ifClauses={ifClausesForArgs}
-                title={`${selected.kind.toUpperCase()} action`}
-                onChange={(next) =>
-                  patchSelected({
-                    integration: next.integration,
-                    action: next.action,
-                    config: next.config,
-                  })
-                }
-                onRemove={() => handleRemove(selected.id)}
-                canRemove
-                lockIntegration={false}
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
+      <GraphNodeConfigModal
+        open={configOpen}
+        node={selected}
+        graph={graph}
+        integrations={integrations}
+        onClose={() => setConfigOpen(false)}
+        onChange={patchSelected}
+      />
 
       {error && (
         <Alert type="error" message={error} showIcon style={{ marginTop: 16 }} />
