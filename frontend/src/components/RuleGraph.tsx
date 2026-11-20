@@ -385,11 +385,24 @@ export function RuleGraph({
                     <rect width={NODE_W} height={NODE_H} rx={12} />
                   </clipPath>
                 </defs>
+                {/* Soft selection halo — sits outside the card so it never fights the accent */}
+                {selected && (
+                  <rect
+                    x={-5}
+                    y={-5}
+                    width={NODE_W + 10}
+                    height={NODE_H + 10}
+                    rx={16}
+                    fill={token.colorPrimary}
+                    opacity={0.16}
+                    pointerEvents="none"
+                  />
+                )}
                 <g clipPath={`url(#node-clip-${item.id})`}>
                   <rect
                     width={NODE_W}
                     height={NODE_H}
-                    fill={token.colorBgContainer}
+                    fill={selected ? token.colorPrimaryBg : token.colorBgContainer}
                     filter="url(#node-shadow)"
                     className="rule-graph-node"
                   />
@@ -401,8 +414,8 @@ export function RuleGraph({
                   height={NODE_H}
                   rx={12}
                   fill="none"
-                  stroke={selected ? token.colorPrimary : token.colorBorder}
-                  strokeWidth={selected ? 2.5 : 1.25}
+                  stroke={token.colorBorder}
+                  strokeWidth={1.25}
                   pointerEvents="none"
                 />
 
