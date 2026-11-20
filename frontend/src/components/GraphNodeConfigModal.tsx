@@ -287,7 +287,7 @@ export function GraphNodeConfigModal({
                       }
                       const { key, integration, action } = option;
                       return (
-                        <Col key={key} xs={24} sm={12}>
+                        <Col key={key} span={24}>
                           <OptionCard
                             integration={integration}
                             title={action.label}
