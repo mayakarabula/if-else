@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   Radio,
-  Select,
   Space,
   Spin,
   Typography,
@@ -18,33 +17,11 @@ import { api, type Integration, type RuleRunTrigger } from "../api/client";
 import { GraphNodeConfigModal } from "../components/GraphNodeConfigModal";
 import { RuleGraph } from "../components/RuleGraph";
 import { formLayout } from "../components/ui";
-
-type RunMode = "off" | RuleRunTrigger;
-
-const POLL_INTERVAL_OPTIONS = [
-  { value: "30s", label: "Every 30 seconds" },
-  { value: "1m", label: "Every 1 minute" },
-  { value: "5m", label: "Every 5 minutes" },
-  { value: "15m", label: "Every 15 minutes" },
-  { value: "30m", label: "Every 30 minutes" },
-  { value: "1h", label: "Every hour" },
-  { value: "6h", label: "Every 6 hours" },
-  { value: "12h", label: "Every 12 hours" },
-  { value: "24h", label: "Every day" },
-] as const;
-
-function newWebhookToken() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID().replace(/-/g, "");
-  }
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
-}
 import {
   addChild,
   createEmptyGraph,
   graphToRulePayload,
   graphValidation,
-  isConditionKind,
   refineGraphSlots,
   removeNode,
   ruleToGraph,
@@ -54,6 +31,15 @@ import {
   type GraphState,
 } from "../lib/graph";
 import { validateGraphSetup } from "../lib/graphIssues";
+
+type RunMode = "off" | RuleRunTrigger;
+
+function newWebhookToken() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID().replace(/-/g, "");
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
 
 export function RuleFormPage() {
   const { message } = App.useApp();
@@ -129,9 +115,6 @@ export function RuleFormPage() {
   const validation = useMemo(
     () => validateGraphSetup(graph, integrations, graphValidation(graph)),
     [graph, integrations],
-  );
-  const hasTimeClause = graph.nodes.some(
-    (n) => isConditionKind(n.kind) && n.integration === "time" && n.trigger,
   );
 
   function handleAddChild(parentId: string, kind: GraphNodeKind) {
@@ -292,7 +275,8 @@ export function RuleFormPage() {
             <Typography.Text strong>Run when</Typography.Text>
             <div>
               <Typography.Text type="secondary">
-                Choose a timer, a webhook URL, or keep the rule paused.
+                Choose a timer, a webhook URL, or keep the rule paused. Timer cadence comes from a
+                Time → Every If condition (default 15m), or every 30s when using Every day at.
               </Typography.Text>
             </div>
           </div>
@@ -314,47 +298,6 @@ export function RuleFormPage() {
               { label: "Webhook URL", value: "webhook" },
             ]}
           />
-
-          {runMode === "timer" && (
-            <Form
-              layout="horizontal"
-              labelAlign="left"
-              colon={false}
-              requiredMark={false}
-              labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
-              wrapperCol={{ flex: "1 1 auto" }}
-              style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 24 }}
-            >
-              <Form.Item
-                label="Poll interval"
-                style={{ marginBottom: 0 }}
-                help={
-                  hasTimeClause
-                    ? "Time conditions still wake the rule near the scheduled minute; this interval is used for other checks."
-                    : "How often to evaluate If conditions while the rule is on a timer."
-                }
-              >
-                <Select
-                  value={
-                    POLL_INTERVAL_OPTIONS.some((option) => option.value === graph.pollInterval)
-                      ? graph.pollInterval
-                      : graph.pollInterval || "15m"
-                  }
-                  options={[
-                    ...POLL_INTERVAL_OPTIONS,
-                    ...(!POLL_INTERVAL_OPTIONS.some((option) => option.value === graph.pollInterval) &&
-                    graph.pollInterval
-                      ? [{ value: graph.pollInterval, label: `Custom (${graph.pollInterval})` }]
-                      : []),
-                  ]}
-                  onChange={(value) =>
-                    setGraph((current) => ({ ...current, pollInterval: String(value) }))
-                  }
-                  style={{ width: formLayout.controlWidth, maxWidth: "100%" }}
-                />
-              </Form.Item>
-            </Form>
-          )}
 
           {runMode === "webhook" && (
             <div style={{ display: "grid", gap: 8 }}>

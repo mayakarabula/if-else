@@ -201,7 +201,7 @@ const integrationFields: Record<
 };
 
 const integrationCopy: Record<string, string> = {
-  time: "Schedule rules to run once per day at a chosen time and timezone.",
+  time: "Poll on an interval (Time → Every) or fire once per day at a chosen time and timezone.",
   weather:
     "Open-Meteo weather conditions and data — no API key. Pick a place when you build a rule.",
   wifi: "Discover devices on this machine’s LAN (ARP + ping). Match a device IP or scan nearby hosts.",

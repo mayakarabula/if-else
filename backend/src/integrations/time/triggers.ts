@@ -38,6 +38,55 @@ const COMMON_ERROR_CALLBACK = [
   { path: "plan", label: "Action plan", description: "Planned steps joined with →" },
 ];
 
+const INTERVAL_OPTIONS = [
+  { value: "30s", label: "Every 30 seconds" },
+  { value: "1m", label: "Every 1 minute" },
+  { value: "5m", label: "Every 5 minutes" },
+  { value: "15m", label: "Every 15 minutes" },
+  { value: "30m", label: "Every 30 minutes" },
+  { value: "1h", label: "Every hour" },
+  { value: "6h", label: "Every 6 hours" },
+  { value: "12h", label: "Every 12 hours" },
+  { value: "24h", label: "Every day" },
+];
+
+/** Interval poll — always passes when the scheduler runs the rule; interval drives enqueue cadence. */
+export const every: TriggerDefinition = {
+  id: "every",
+  label: "Every",
+  description: "Poll on an interval while the rule runs on a timer. Use this instead of a separate poll setting.",
+  actionPlan: [
+    "Read the configured poll interval",
+    "The scheduler enqueues the rule on that cadence when Run when is On a timer",
+    "This condition passes on each scheduled poll (and on manual / webhook runs)",
+  ],
+  errorCallback: COMMON_ERROR_CALLBACK,
+  fields: [
+    {
+      key: "interval",
+      label: "Interval",
+      type: "select",
+      required: true,
+      default: "15m",
+      options: INTERVAL_OPTIONS,
+    },
+  ],
+  outputs: [
+    { path: "interval", label: "Interval", description: "Configured poll interval, e.g. 15m" },
+    { path: "time", label: "Current time (UTC)", description: "ISO timestamp when the rule ran" },
+  ],
+  async evaluate(config) {
+    const interval = String(config.interval ?? "15m").trim() || "15m";
+    return {
+      fired: true,
+      data: {
+        interval,
+        time: new Date().toISOString(),
+      },
+    };
+  },
+};
+
 export const dailyAt: TriggerDefinition = {
   id: "daily_at",
   label: "Every day at",
