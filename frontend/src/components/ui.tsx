@@ -10,6 +10,10 @@ const icons: Record<string, string> = {
   mail: "✉️",
   home: "🏠",
   zigbee: "📡",
+  docs: "📄",
+  sheets: "📊",
+  notion: "📓",
+  cursor: "⌘",
 };
 
 /** Shared horizontal form layout so labels and controls line up across the app. */
