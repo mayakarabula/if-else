@@ -1,5 +1,5 @@
 import type { IntegrationDefinition } from "./types.js";
-import { dailyAt } from "./time/triggers.js";
+import { dailyAt, every } from "./time/triggers.js";
 import { fetchData, temperatureAbove, temperatureBelow } from "./weather/triggers.js";
 import { sendMessage } from "./telegram/actions.js";
 import { sendEmail as gmailSendEmail } from "./gmail/actions.js";
@@ -26,7 +26,7 @@ export const integrations: IntegrationDefinition[] = [
     name: "Time",
     icon: "clock",
     color: "#F97316",
-    triggers: [dailyAt],
+    triggers: [every, dailyAt],
   },
   {
     id: "weather",

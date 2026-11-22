@@ -225,7 +225,13 @@ export function graphToRulePayload(state: GraphState): {
   }));
 
   const mode = conditionMode(state.nodes);
-  const ifBlock = serializeIf(ifClauses, state.pollInterval, mode);
+  const everyClause = ifClauses.find(
+    (clause) => clause.integration === "time" && clause.trigger === "every",
+  );
+  const pollInterval = everyClause
+    ? String(everyClause.config.interval ?? "15m").trim() || "15m"
+    : state.pollInterval;
+  const ifBlock = serializeIf(ifClauses, pollInterval, mode);
   const thenBlock = serializeThen(thenClauses) ?? { all: [] as RuleThenClause[] };
   const elseBlock = serializeThen(elseClauses);
   const catchBlock = serializeThen(catchClauses);

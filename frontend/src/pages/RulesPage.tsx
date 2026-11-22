@@ -24,13 +24,24 @@ function RuleCard({
   const elseClauses = normalizeThen(rule.else).all;
   const catchClauses = normalizeThen(rule.catch).all;
 
-  const pollInterval = normalizeIf(rule.if).pollInterval;
+  const ifNormalized = normalizeIf(rule.if);
+  const everyClause = ifNormalized.clauses.find(
+    (clause) => clause.integration === "time" && clause.trigger === "every",
+  );
+  const dailyAt = ifNormalized.clauses.some(
+    (clause) => clause.integration === "time" && clause.trigger === "daily_at",
+  );
+  const pollLabel = everyClause
+    ? String(everyClause.config.interval ?? "15m")
+    : dailyAt
+      ? "daily"
+      : ifNormalized.pollInterval;
   const triggerLabel = !rule.enabled
     ? "Paused"
     : rule.runTrigger === "webhook"
       ? "Webhook"
-      : pollInterval
-        ? `Timer · ${pollInterval}`
+      : pollLabel
+        ? `Timer · ${pollLabel}`
         : "Timer";
 
   return (

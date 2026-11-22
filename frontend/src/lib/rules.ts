@@ -130,6 +130,10 @@ export function formatClauseConfigSummary(
     if (ifClause.integration === "time" && ifClause.trigger === "daily_at") {
       return [formatTimeValue(ifClause.config.hour, ifClause.config.minute, ifClause.config.timezone)];
     }
+    if (ifClause.integration === "time" && ifClause.trigger === "every") {
+      const interval = String(ifClause.config.interval ?? "15m").trim() || "15m";
+      return [`Every ${interval}`];
+    }
   }
 
   const integration = integrations.find((item) => item.id === clause.integration);
