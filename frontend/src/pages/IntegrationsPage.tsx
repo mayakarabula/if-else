@@ -106,9 +106,9 @@ const integrationCopy: Record<string, string> = {
   weather:
     "Open-Meteo weather conditions and data — no API key. Pick a place when you build a rule.",
   wifi: "Discover devices on this machine’s LAN (ARP + ping). Match a device IP or scan nearby hosts.",
-  telegram: "Send messages and weather reports via a Telegram bot. Configure token and chat ID here.",
+  telegram: "Send messages via a Telegram bot. Configure token and chat ID here.",
   gmail:
-    "Send emails and weather reports through Gmail SMTP. Use a Google App Password (2-Step Verification required).",
+    "Send emails through Gmail SMTP. Use a Google App Password (2-Step Verification required).",
   homeassistant:
     "Control and read Home Assistant entities over the REST API. Create a long-lived access token in your HA profile.",
   zigbee:
@@ -151,7 +151,6 @@ function IntegrationListItem({
   config: Record<string, Record<string, unknown>>;
   onConfigure: () => void;
 }) {
-  const { token } = theme.useToken();
   const conditions = (integration.triggers ?? []).filter((item) => (item.kind ?? "condition") !== "data");
   const sources = (integration.triggers ?? []).filter((item) => item.kind === "data");
   const actions = integration.actions ?? [];
@@ -212,31 +211,6 @@ function IntegrationListItem({
                 </Tag>
               ))}
             </Space>
-
-            {[...conditions, ...sources, ...actions].some((item) => item.actionPlan?.length) && (
-              <div
-                style={{
-                  borderTop: `1px solid ${token.colorBorderSecondary}`,
-                  paddingTop: 10,
-                }}
-              >
-                <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.04 }}>
-                  ACTION PLANS
-                </Typography.Text>
-                {[...conditions, ...sources, ...actions]
-                  .filter((item) => item.actionPlan?.length)
-                  .map((item) => (
-                    <div key={`plan-${item.id}`} style={{ marginTop: 6 }}>
-                      <Typography.Text strong style={{ fontSize: 12 }}>
-                        {item.label}
-                      </Typography.Text>
-                      <Typography.Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 12 }}>
-                        {item.actionPlan!.join(" → ")}
-                      </Typography.Paragraph>
-                    </div>
-                  ))}
-              </div>
-            )}
           </div>
         }
       />

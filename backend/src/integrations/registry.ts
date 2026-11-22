@@ -1,11 +1,8 @@
 import type { IntegrationDefinition } from "./types.js";
 import { dailyAt } from "./time/triggers.js";
 import { fetchData, temperatureAbove, temperatureBelow } from "./weather/triggers.js";
-import { sendMessage, sendWeatherReport } from "./telegram/actions.js";
-import {
-  sendEmail as gmailSendEmail,
-  sendWeatherReport as gmailSendWeatherReport,
-} from "./gmail/actions.js";
+import { sendMessage } from "./telegram/actions.js";
+import { sendEmail as gmailSendEmail } from "./gmail/actions.js";
 import { deviceOnNetwork, scanNetwork } from "./wifi/triggers.js";
 import {
   callHaService,
@@ -60,14 +57,14 @@ export const integrations: IntegrationDefinition[] = [
     name: "Telegram",
     icon: "send",
     color: "#0088CC",
-    actions: [sendMessage, sendWeatherReport],
+    actions: [sendMessage],
   },
   {
     id: "gmail",
     name: "Gmail",
     icon: "mail",
     color: "#EA4335",
-    actions: [gmailSendEmail, gmailSendWeatherReport],
+    actions: [gmailSendEmail],
   },
 ];
 
