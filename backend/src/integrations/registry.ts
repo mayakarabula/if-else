@@ -13,6 +13,12 @@ import {
 import { entityStateIs, fetchEntityState } from "./homeassistant/triggers.js";
 import { publishSet, setBrightness, setState } from "./zigbee/actions.js";
 import { attributeEquals, deviceStateIs, fetchDeviceState } from "./zigbee/triggers.js";
+import { appendText as docsAppendText, createDocument as docsCreateDocument } from "./googledocs/actions.js";
+import { fetchDocument as docsFetchDocument } from "./googledocs/triggers.js";
+import { appendRow as sheetsAppendRow, updateRange as sheetsUpdateRange } from "./googlesheets/actions.js";
+import { fetchRange as sheetsFetchRange } from "./googlesheets/triggers.js";
+import { appendParagraph as notionAppendParagraph, createPage as notionCreatePage } from "./notion/actions.js";
+import { launchCloudAgent } from "./cursor/actions.js";
 
 export const integrations: IntegrationDefinition[] = [
   {
@@ -65,6 +71,36 @@ export const integrations: IntegrationDefinition[] = [
     icon: "mail",
     color: "#EA4335",
     actions: [gmailSendEmail],
+  },
+  {
+    id: "googledocs",
+    name: "Google Docs",
+    icon: "docs",
+    color: "#4285F4",
+    triggers: [docsFetchDocument],
+    actions: [docsAppendText, docsCreateDocument],
+  },
+  {
+    id: "googlesheets",
+    name: "Google Sheets",
+    icon: "sheets",
+    color: "#0F9D58",
+    triggers: [sheetsFetchRange],
+    actions: [sheetsAppendRow, sheetsUpdateRange],
+  },
+  {
+    id: "notion",
+    name: "Notion",
+    icon: "notion",
+    color: "#111111",
+    actions: [notionAppendParagraph, notionCreatePage],
+  },
+  {
+    id: "cursor",
+    name: "Cursor Agent",
+    icon: "cursor",
+    color: "#F54E00",
+    actions: [launchCloudAgent],
   },
 ];
 

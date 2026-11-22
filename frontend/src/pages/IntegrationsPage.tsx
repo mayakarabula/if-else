@@ -99,6 +99,105 @@ const integrationFields: Record<
       required: false,
     },
   ],
+  googledocs: [
+    {
+      key: "refreshToken",
+      label: "Refresh token",
+      type: "textarea",
+      placeholder: "OAuth refresh token with Docs scope",
+      required: true,
+    },
+    {
+      key: "clientId",
+      label: "Client ID (optional)",
+      type: "text",
+      placeholder: "Defaults to GOOGLE_CLIENT_ID",
+      required: false,
+    },
+    {
+      key: "clientSecret",
+      label: "Client secret (optional)",
+      type: "text",
+      placeholder: "Defaults to GOOGLE_CLIENT_SECRET",
+      required: false,
+    },
+    {
+      key: "defaultDocumentId",
+      label: "Default document ID",
+      type: "text",
+      placeholder: "optional",
+      required: false,
+    },
+  ],
+  googlesheets: [
+    {
+      key: "refreshToken",
+      label: "Refresh token",
+      type: "textarea",
+      placeholder: "OAuth refresh token with Sheets scope",
+      required: true,
+    },
+    {
+      key: "clientId",
+      label: "Client ID (optional)",
+      type: "text",
+      placeholder: "Defaults to GOOGLE_CLIENT_ID",
+      required: false,
+    },
+    {
+      key: "clientSecret",
+      label: "Client secret (optional)",
+      type: "text",
+      placeholder: "Defaults to GOOGLE_CLIENT_SECRET",
+      required: false,
+    },
+    {
+      key: "defaultSpreadsheetId",
+      label: "Default spreadsheet ID",
+      type: "text",
+      placeholder: "optional",
+      required: false,
+    },
+  ],
+  notion: [
+    {
+      key: "apiToken",
+      label: "Integration token",
+      type: "text",
+      placeholder: "secret_…",
+      required: true,
+    },
+    {
+      key: "defaultPageId",
+      label: "Default page ID",
+      type: "text",
+      placeholder: "optional",
+      required: false,
+    },
+    {
+      key: "defaultDatabaseId",
+      label: "Default database ID",
+      type: "text",
+      placeholder: "optional",
+      required: false,
+    },
+  ],
+  cursor: [
+    {
+      key: "apiKey",
+      label: "API key",
+      type: "text",
+      placeholder: "Defaults to CURSOR_API_KEY",
+      required: false,
+    },
+    {
+      key: "defaultRepoUrl",
+      label: "Default repo URL",
+      type: "text",
+      placeholder: "https://github.com/org/repo",
+      required: false,
+    },
+  ],
 };
 
 const integrationCopy: Record<string, string> = {
@@ -113,6 +212,14 @@ const integrationCopy: Record<string, string> = {
     "Control and read Home Assistant entities over the REST API. Create a long-lived access token in your HA profile.",
   zigbee:
     "Talk to Zigbee2MQTT over MQTT — read device state and publish set commands by friendly name.",
+  googledocs:
+    "Read and write Google Docs via OAuth refresh token (Docs scope). Client ID/secret can come from env.",
+  googlesheets:
+    "Read and write Google Sheets via OAuth refresh token (Sheets scope). Client ID/secret can come from env.",
+  notion:
+    "Create pages and append paragraphs with a Notion internal integration token. Share pages/databases with the integration.",
+  cursor:
+    "Launch Cursor Cloud Agents with an API key (Agent SDK / Cloud Agents API). Optional default repository URL.",
 };
 
 function configStatus(

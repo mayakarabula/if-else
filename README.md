@@ -44,6 +44,18 @@ Configure under **Integrations → Home Assistant** with your instance URL and a
 
 Configure under **Integrations → Zigbee** with your MQTT broker URL (and optional credentials / base topic, default `zigbee2mqtt`). Conditions read device state over MQTT; actions publish to `<device>/set`.
 
+### Google Docs / Sheets
+
+Configure under **Integrations** with an OAuth **refresh token** that includes Docs and/or Sheets scopes. Client ID/secret default to `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`. Actions can append/create docs and append/update sheet rows; SOURCE nodes can fetch document text or a sheet range.
+
+### Notion
+
+Configure under **Integrations → Notion** with an [internal integration token](https://www.notion.so/my-integrations). Share target pages/databases with the integration. Actions: append paragraph, create page.
+
+### Cursor Agent
+
+Configure under **Integrations → Cursor Agent** with a Cursor API key (or set `CURSOR_API_KEY`). Action: **Launch cloud agent** against a repository via the Cloud Agents API.
+
 ## Local development (without full Docker)
 
 You still need Redis for the queue:
