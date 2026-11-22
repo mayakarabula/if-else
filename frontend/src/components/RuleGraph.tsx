@@ -159,31 +159,25 @@ function nodeSubtitle(node: GraphNode, integrations: Integration[]): string {
     if (!isConditionConfigured(node)) {
       return isSourceKind(node.kind) ? "Pick a data source…" : "Pick a condition…";
     }
-    const overview = formatClauseOverview(
-      integrations,
-      { integration: node.integration!, trigger: node.trigger!, config: node.config },
-      "if",
-    );
-    if (overview) return overview;
-    return clauseLabel(
-      integrations,
-      { integration: node.integration!, trigger: node.trigger!, config: node.config },
-      "if",
-    );
+    const clause = {
+      integration: node.integration!,
+      trigger: node.trigger!,
+      config: node.config,
+    };
+    const label = clauseLabel(integrations, clause, "if");
+    const overview = formatClauseOverview(integrations, clause, "if");
+    return overview ? `${label} · ${overview}` : label;
   }
 
   if (!isActionConfigured(node)) return "Pick an action…";
-  const overview = formatClauseOverview(
-    integrations,
-    { integration: node.integration!, action: node.action!, config: node.config },
-    "then",
-  );
-  if (overview) return overview;
-  return clauseLabel(
-    integrations,
-    { integration: node.integration!, action: node.action!, config: node.config },
-    "then",
-  );
+  const clause = {
+    integration: node.integration!,
+    action: node.action!,
+    config: node.config,
+  };
+  const label = clauseLabel(integrations, clause, "then");
+  const overview = formatClauseOverview(integrations, clause, "then");
+  return overview ? `${label} · ${overview}` : label;
 }
 
 function kindLabel(
