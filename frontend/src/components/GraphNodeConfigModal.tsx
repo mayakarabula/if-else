@@ -47,8 +47,12 @@ function OptionCard({
         textAlign: "left",
         padding: 12,
         borderRadius: 12,
-        border: selected ? "1.5px solid var(--app-primary)" : "1px solid rgba(42,38,31,0.12)",
-        background: selected ? "rgba(160,122,58,0.08)" : "var(--app-paper)",
+        border: selected
+          ? "1.5px solid var(--app-primary)"
+          : "1px solid var(--app-border-soft, rgba(42,38,31,0.12))",
+        background: selected
+          ? "color-mix(in srgb, var(--app-primary, #a07a3a) 12%, transparent)"
+          : "var(--app-paper)",
         cursor: "pointer",
         overflow: "hidden",
       }}
@@ -274,7 +278,8 @@ export function GraphNodeConfigModal({
       okText="Done"
       destroyOnHidden
       centered
-      width={680}
+      width="min(680px, calc(100vw - 24px))"
+      styles={{ body: { maxHeight: "min(70vh, 640px)", overflowY: "auto" } }}
       afterOpenChange={(visible) => {
         if (visible && node && !hasSelection) {
           setPicking(true);
@@ -365,8 +370,8 @@ export function GraphNodeConfigModal({
                   gap: 12,
                   padding: 14,
                   borderRadius: 12,
-                  border: "1px solid rgba(42,38,31,0.12)",
-                  background: "rgba(42,38,31,0.03)",
+                  border: "1px solid var(--app-border-soft, rgba(42,38,31,0.12))",
+                  background: "color-mix(in srgb, var(--app-ink, #2a261f) 4%, transparent)",
                 }}
               >
                 <Space size={12}>

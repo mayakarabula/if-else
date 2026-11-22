@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 import type { Integration } from "../api/client";
 import {
-  NODE_COLORS,
+  nodeColorsForMode,
   allowedChildKinds,
   isActionConfigured,
   isActionKind,
@@ -23,12 +23,16 @@ import {
   type GraphState,
 } from "../lib/graph";
 import { clauseLabel, formatClauseOverview } from "../lib/rules";
+import { useThemeMode } from "../theme";
 
 const NODE_W = 188;
 const NODE_H = 84;
 const H_GAP = 56;
 const V_GAP = 36;
 const ACCENT_W = 5;
+const MOBILE_BREAKPOINT = 768;
+
+type GraphOrientation = "horizontal" | "vertical";
 
 interface LayoutNode {
   id: string;
@@ -44,7 +48,10 @@ interface LayoutLink {
   label?: string;
 }
 
-function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLink[]; width: number; height: number } {
+function layoutGraph(
+  nodes: GraphNode[],
+  orientation: GraphOrientation,
+): { laid: LayoutNode[]; links: LayoutLink[]; width: number; height: number } {
   if (nodes.length === 0) {
     return { laid: [], links: [], width: 400, height: 240 };
   }
@@ -75,6 +82,7 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
       return order(a.kind) - order(b.kind) || a.id.localeCompare(b.id);
     });
 
+  const vertical = orientation === "vertical";
   const laid: LayoutNode[] = [];
   const links: LayoutLink[] = [];
   let leafIndex = 0;
@@ -83,21 +91,21 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
     const kids = sortKids(byParent.get(node.id) ?? []);
     const childLayouts = kids.map((k) => place(k, depth + 1));
 
-    let y: number;
+    let cross: number;
     if (childLayouts.length === 0) {
-      y = leafIndex * (NODE_H + V_GAP);
+      cross = leafIndex * ((vertical ? NODE_W : NODE_H) + (vertical ? H_GAP * 0.55 : V_GAP));
       leafIndex += 1;
     } else {
-      const top = childLayouts[0].y;
-      const bottom = childLayouts[childLayouts.length - 1].y;
-      y = (top + bottom) / 2;
+      const first = childLayouts[0];
+      const last = childLayouts[childLayouts.length - 1];
+      cross = vertical ? (first.x + last.x) / 2 : (first.y + last.y) / 2;
     }
 
     const layout: LayoutNode = {
       id: node.id,
       node,
-      x: depth * (NODE_W + H_GAP),
-      y,
+      x: vertical ? cross : depth * (NODE_W + H_GAP),
+      y: vertical ? depth * (NODE_H + V_GAP) : cross,
       depth,
     };
     laid.push(layout);
@@ -126,9 +134,15 @@ function layoutGraph(nodes: GraphNode[]): { laid: LayoutNode[]; links: LayoutLin
   place(root, 0);
 
   const pad = 24;
-  const minY = Math.min(...laid.map((n) => n.y), 0);
-  for (const n of laid) n.y = n.y - minY + pad;
-  for (const n of laid) n.x += pad;
+  if (vertical) {
+    const minX = Math.min(...laid.map((n) => n.x), 0);
+    for (const n of laid) n.x = n.x - minX + pad;
+    for (const n of laid) n.y += pad;
+  } else {
+    const minY = Math.min(...laid.map((n) => n.y), 0);
+    for (const n of laid) n.y = n.y - minY + pad;
+    for (const n of laid) n.x += pad;
+  }
 
   const width = Math.max(...laid.map((n) => n.x), 0) + NODE_W + pad * 2;
   const height = Math.max(...laid.map((n) => n.y), 0) + NODE_H + pad * 2;
@@ -168,14 +182,34 @@ function nodeSubtitle(node: GraphNode, integrations: Integration[]): string {
   );
 }
 
-function kindLabel(node: GraphNode, nodes: GraphNode[]): string {
+function kindLabel(
+  node: GraphNode,
+  nodes: GraphNode[],
+  colors: ReturnType<typeof nodeColorsForMode>,
+): string {
   if (node.parentId) {
     const parent = nodes.find((n) => n.id === node.parentId);
     if (parent && parent.kind === node.kind && (isActionKind(node.kind) || isSourceKind(node.kind))) {
       return "AND";
     }
   }
-  return NODE_COLORS[node.kind].label;
+  return colors[node.kind].label;
+}
+
+function useIsMobile(breakpoint = MOBILE_BREAKPOINT) {
+  const [mobile, setMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(`(max-width: ${breakpoint - 1}px)`).matches : false,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const onChange = () => setMobile(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [breakpoint]);
+
+  return mobile;
 }
 
 export function RuleGraph({
@@ -196,12 +230,20 @@ export function RuleGraph({
   onRemove: (id: string) => void;
 }) {
   const { token } = theme.useToken();
+  const { mode } = useThemeMode();
+  const colors = useMemo(() => nodeColorsForMode(mode), [mode]);
+  const isMobile = useIsMobile();
+  const orientation: GraphOrientation = isMobile ? "vertical" : "horizontal";
+
   const svgRef = useRef<SVGSVGElement | null>(null);
   const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [viewport, setViewport] = useState({ w: 800, h: 420 });
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const { laid, links, width, height } = useMemo(() => layoutGraph(state.nodes), [state.nodes]);
+  const { laid, links, width, height } = useMemo(
+    () => layoutGraph(state.nodes, orientation),
+    [state.nodes, orientation],
+  );
 
   const pathNodeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -215,7 +257,8 @@ export function RuleGraph({
     return ids;
   }, [selectedId, state.nodes]);
 
-  const PATH_BLUE = "#7aa2d4";
+  const PATH_BLUE = mode === "dark" ? "#8eb6e0" : "#7aa2d4";
+  const graphHeight = isMobile ? Math.min(Math.max(height + 48, 520), 720) : 440;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -228,7 +271,7 @@ export function RuleGraph({
     ro.observe(el);
     setViewport({ w: el.clientWidth, h: Math.max(360, el.clientHeight) });
     return () => ro.disconnect();
-  }, []);
+  }, [graphHeight]);
 
   useEffect(() => {
     const el = svgRef.current;
@@ -238,7 +281,7 @@ export function RuleGraph({
 
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.4, 2.5])
+      .scaleExtent([0.35, 2.5])
       .on("zoom", (event) => {
         svg.select<SVGGElement>("g.viewport").attr("transform", event.transform.toString());
       });
@@ -246,7 +289,11 @@ export function RuleGraph({
     zoomRef.current = zoom;
     svg.call(zoom);
 
-    const scale = Math.min(1, (viewport.w - 40) / Math.max(width, 1), (viewport.h - 40) / Math.max(height, 1));
+    const scale = Math.min(
+      1,
+      (viewport.w - 40) / Math.max(width, 1),
+      (viewport.h - 40) / Math.max(height, 1),
+    );
     const tx = (viewport.w - width * scale) / 2;
     const ty = Math.max(16, (viewport.h - height * scale) / 2);
     svg.transition().duration(350).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
@@ -254,7 +301,7 @@ export function RuleGraph({
     return () => {
       svg.on(".zoom", null);
     };
-  }, [width, height, viewport.w, viewport.h]);
+  }, [width, height, viewport.w, viewport.h, orientation]);
 
   function zoomBy(factor: number) {
     const el = svgRef.current;
@@ -265,7 +312,11 @@ export function RuleGraph({
   function resetZoom() {
     const el = svgRef.current;
     if (!el || !zoomRef.current) return;
-    const scale = Math.min(1, (viewport.w - 40) / Math.max(width, 1), (viewport.h - 40) / Math.max(height, 1));
+    const scale = Math.min(
+      1,
+      (viewport.w - 40) / Math.max(width, 1),
+      (viewport.h - 40) / Math.max(height, 1),
+    );
     const tx = (viewport.w - width * scale) / 2;
     const ty = Math.max(16, (viewport.h - height * scale) / 2);
     d3.select<SVGSVGElement, unknown>(el)
@@ -275,12 +326,33 @@ export function RuleGraph({
   }
 
   const linkPath = (link: LayoutLink) => {
+    if (orientation === "vertical") {
+      const x1 = link.source.x + NODE_W / 2;
+      const y1 = link.source.y + NODE_H;
+      const x2 = link.target.x + NODE_W / 2;
+      const y2 = link.target.y;
+      const my = (y1 + y2) / 2;
+      return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+    }
     const x1 = link.source.x + NODE_W;
     const y1 = link.source.y + NODE_H / 2;
     const x2 = link.target.x;
     const y2 = link.target.y + NODE_H / 2;
     const mx = (x1 + x2) / 2;
     return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`;
+  };
+
+  const linkLabelPos = (link: LayoutLink) => {
+    if (orientation === "vertical") {
+      return {
+        x: (link.source.x + link.target.x) / 2 + NODE_W / 2,
+        y: (link.source.y + NODE_H + link.target.y) / 2,
+      };
+    }
+    return {
+      x: (link.source.x + NODE_W + link.target.x) / 2,
+      y: (link.source.y + link.target.y) / 2 + NODE_H / 2,
+    };
   };
 
   return (
@@ -290,15 +362,16 @@ export function RuleGraph({
       style={{
         position: "relative",
         width: "100%",
-        height: 440,
+        height: graphHeight,
         borderRadius: token.borderRadiusLG,
         border: `1px solid ${token.colorBorderSecondary}`,
         background: `
-          radial-gradient(circle at 20% 20%, rgba(160,122,58,0.08), transparent 45%),
+          radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--app-primary, #a07a3a) 12%, transparent), transparent 45%),
           radial-gradient(circle at 80% 70%, rgba(61,107,79,0.07), transparent 40%),
-          linear-gradient(160deg, ${token.colorBgContainer} 0%, #e8e0d2 100%)
+          linear-gradient(160deg, ${token.colorBgContainer} 0%, color-mix(in srgb, var(--app-bg, ${token.colorBgLayout}) 70%, ${token.colorBgContainer}) 100%)
         `,
         overflow: "hidden",
+        touchAction: "none",
       }}
     >
       <div
@@ -322,12 +395,13 @@ export function RuleGraph({
           position: "absolute",
           left: 14,
           top: 12,
+          right: 120,
           zIndex: 2,
           fontSize: 12,
           letterSpacing: 0.04,
         }}
       >
-        FLOW GRAPH · drag to pan · scroll to zoom
+        {isMobile ? "FLOW · pinch / drag · top → bottom" : "FLOW GRAPH · drag to pan · scroll to zoom"}
       </Typography.Text>
 
       <svg
@@ -366,8 +440,7 @@ export function RuleGraph({
           {links.map((link) => {
             const onPath =
               pathNodeIds.has(link.target.id) && pathNodeIds.has(link.source.id);
-            const midX = (link.source.x + NODE_W + link.target.x) / 2;
-            const midY = (link.source.y + link.target.y) / 2 + NODE_H / 2;
+            const labelPos = linkLabelPos(link);
             return (
               <g key={`${link.source.id}-${link.target.id}`}>
                 <path
@@ -379,7 +452,7 @@ export function RuleGraph({
                   markerEnd={onPath ? "url(#rule-arrow-path)" : "url(#rule-arrow)"}
                 />
                 {link.label && (
-                  <g transform={`translate(${midX}, ${midY})`}>
+                  <g transform={`translate(${labelPos.x}, ${labelPos.y})`}>
                     <rect
                       x={-(link.label.length * 3.6 + 10)}
                       y={-10}
@@ -406,11 +479,11 @@ export function RuleGraph({
           })}
 
           {laid.map((item) => {
-            const colors = NODE_COLORS[item.node.kind];
+            const nodeColor = colors[item.node.kind];
             const selected = selectedId === item.id;
             const addOptions = allowedChildKinds(item.node, state.nodes);
             const canRemove = !(item.node.kind === "if" && item.node.parentId === null);
-            const title = kindLabel(item.node, state.nodes);
+            const title = kindLabel(item.node, state.nodes, colors);
             const subtitle = nodeSubtitle(item.node, integrations);
 
             return (
@@ -435,8 +508,7 @@ export function RuleGraph({
                     fill={selected ? token.colorPrimaryBg : token.colorBgContainer}
                     className="rule-graph-node"
                   />
-                  {/* Kind accent — left border only */}
-                  <rect width={ACCENT_W} height={NODE_H} fill={colors.fill} />
+                  <rect width={ACCENT_W} height={NODE_H} fill={nodeColor.fill} />
                 </g>
                 <rect
                   width={NODE_W}
@@ -454,7 +526,7 @@ export function RuleGraph({
                   fontSize={11}
                   fontWeight={800}
                   letterSpacing="0.08em"
-                  fill={colors.fill}
+                  fill={nodeColor.fill}
                 >
                   {title}
                 </text>
@@ -497,7 +569,7 @@ export function RuleGraph({
                       menu={{
                         items: addOptions.map((kind) => ({
                           key: kind,
-                          label: NODE_COLORS[kind].label,
+                          label: colors[kind].label,
                           onClick: () => onAddChild(item.id, kind),
                         })),
                       }}
@@ -539,11 +611,13 @@ export function RuleGraph({
         style={{
           position: "absolute",
           left: 14,
+          right: 14,
           bottom: 12,
           zIndex: 2,
+          overflowX: "auto",
         }}
       >
-        <Space size={8} wrap>
+        <Space size={8} wrap={!isMobile}>
           {(["if", "and", "or", "source", "then", "else", "catch"] as GraphNodeKind[]).map((kind) => (
             <span
               key={kind}
@@ -553,6 +627,7 @@ export function RuleGraph({
                 gap: 6,
                 fontSize: 11,
                 color: token.colorTextSecondary,
+                whiteSpace: "nowrap",
               }}
             >
               <span
@@ -560,10 +635,10 @@ export function RuleGraph({
                   width: 10,
                   height: 10,
                   borderRadius: 3,
-                  background: NODE_COLORS[kind].fill,
+                  background: colors[kind].fill,
                 }}
               />
-              {NODE_COLORS[kind].label}
+              {colors[kind].label}
             </span>
           ))}
         </Space>
