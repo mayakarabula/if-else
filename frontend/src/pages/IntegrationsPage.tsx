@@ -41,6 +41,52 @@ const integrationFields: Record<
       required: false,
     },
   ],
+  homeassistant: [
+    {
+      key: "baseUrl",
+      label: "URL",
+      type: "text",
+      placeholder: "http://homeassistant.local:8123",
+      required: true,
+    },
+    {
+      key: "accessToken",
+      label: "Long-lived token",
+      type: "textarea",
+      placeholder: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
+      required: true,
+    },
+  ],
+  zigbee: [
+    {
+      key: "mqttUrl",
+      label: "MQTT URL",
+      type: "text",
+      placeholder: "mqtt://192.168.1.10:1883",
+      required: true,
+    },
+    {
+      key: "mqttUsername",
+      label: "MQTT username",
+      type: "text",
+      placeholder: "optional",
+      required: false,
+    },
+    {
+      key: "mqttPassword",
+      label: "MQTT password",
+      type: "text",
+      placeholder: "optional",
+      required: false,
+    },
+    {
+      key: "baseTopic",
+      label: "Base topic",
+      type: "text",
+      placeholder: "zigbee2mqtt",
+      required: false,
+    },
+  ],
 };
 
 const integrationCopy: Record<string, string> = {
@@ -51,6 +97,10 @@ const integrationCopy: Record<string, string> = {
   telegram: "Send messages and weather reports via a Telegram bot. Configure token and chat ID here.",
   gmail:
     "Send emails and weather reports through Gmail SMTP. Use a Google App Password (2-Step Verification required).",
+  homeassistant:
+    "Control and read Home Assistant entities over the REST API. Create a long-lived access token in your HA profile.",
+  zigbee:
+    "Talk to Zigbee2MQTT over MQTT — read device state and publish set commands by friendly name.",
 };
 
 function configStatus(

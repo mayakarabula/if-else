@@ -36,6 +36,14 @@ Rule YAML and integration config are mounted from `./rules` and `./config`.
 
 Configure under **Integrations → Gmail** with your Gmail address and a [Google App Password](https://myaccount.google.com/apppasswords) (2-Step Verification required). Actions: **Send an email** and **Send weather report**.
 
+### Home Assistant
+
+Configure under **Integrations → Home Assistant** with your instance URL and a [long-lived access token](https://www.home-assistant.io/docs/authentication/). Conditions can match entity state; actions can turn entities on/off/toggle or call any service.
+
+### Zigbee (Zigbee2MQTT)
+
+Configure under **Integrations → Zigbee** with your MQTT broker URL (and optional credentials / base topic, default `zigbee2mqtt`). Conditions read device state over MQTT; actions publish to `<device>/set`.
+
 ## Local development (without full Docker)
 
 You still need Redis for the queue:
