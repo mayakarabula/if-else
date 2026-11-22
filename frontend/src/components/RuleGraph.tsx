@@ -220,6 +220,7 @@ export function RuleGraph({
   state,
   integrations,
   selectedId,
+  touchedIds,
   onSelect,
   onConfigure,
   onAddChild,
@@ -228,6 +229,8 @@ export function RuleGraph({
   state: GraphState;
   integrations: Integration[];
   selectedId: string | null;
+  /** Nodes that may show red setup warnings; untouched nodes stay quiet. */
+  touchedIds?: Set<string>;
   onSelect: (id: string | null) => void;
   onConfigure: (id: string) => void;
   onAddChild: (parentId: string, kind: GraphNodeKind) => void;
@@ -262,8 +265,8 @@ export function RuleGraph({
   }, [selectedId, state.nodes]);
 
   const nodeIssues = useMemo(
-    () => analyzeGraphIssues(state, integrations),
-    [state, integrations],
+    () => analyzeGraphIssues(state, integrations, { touchedIds: touchedIds ?? new Set() }),
+    [state, integrations, touchedIds],
   );
 
   const PATH_BLUE = mode === "dark" ? "#8eb6e0" : "#7aa2d4";

@@ -214,9 +214,17 @@ export function analyzeNodeIssues(
 export function analyzeGraphIssues(
   state: GraphState,
   integrations: Integration[],
+  options?: {
+    /**
+     * When set, only nodes in this set get issues reported (for UI highlighting).
+     * Omit to analyze every node (save validation, edit preload).
+     */
+    touchedIds?: Set<string>;
+  },
 ): Map<string, GraphIssue[]> {
   const map = new Map<string, GraphIssue[]>();
   for (const node of state.nodes) {
+    if (options?.touchedIds && !options.touchedIds.has(node.id)) continue;
     const issues = analyzeNodeIssues(node, state, integrations);
     if (issues.length > 0) map.set(node.id, issues);
   }

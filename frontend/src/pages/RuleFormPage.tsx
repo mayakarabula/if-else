@@ -59,6 +59,18 @@ export function RuleFormPage() {
   const [configOpen, setConfigOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Nodes eligible for red setup warnings. Edit mode preloads every node. */
+  const [touchedIds, setTouchedIds] = useState<Set<string>>(() => new Set());
+  const [saveAttempted, setSaveAttempted] = useState(false);
+
+  function markTouched(nodeId: string) {
+    setTouchedIds((current) => {
+      if (current.has(nodeId)) return current;
+      const next = new Set(current);
+      next.add(nodeId);
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (id) return;
@@ -66,6 +78,8 @@ export function RuleFormPage() {
     const empty = createEmptyGraph();
     setGraph(empty);
     setSelectedId(empty.nodes[0]?.id ?? null);
+    setTouchedIds(new Set());
+    setSaveAttempted(false);
   }, [id]);
 
   useEffect(() => {
@@ -84,6 +98,9 @@ export function RuleFormPage() {
         const next = refineGraphSlots(ruleToGraph(rule, integrationsData), integrationsData);
         setGraph(next);
         setSelectedId(next.nodes[0]?.id ?? null);
+        // Preexisting rules: show setup issues immediately on load.
+        setTouchedIds(new Set(next.nodes.map((node) => node.id)));
+        setSaveAttempted(false);
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load rule");
@@ -118,6 +135,12 @@ export function RuleFormPage() {
 
   function handleRemove(nodeId: string) {
     setGraph((current) => removeNode(current, nodeId));
+    setTouchedIds((current) => {
+      if (!current.has(nodeId)) return current;
+      const next = new Set(current);
+      next.delete(nodeId);
+      return next;
+    });
     setSelectedId((current) => {
       if (current !== nodeId) return current;
       setConfigOpen(false);
@@ -130,8 +153,14 @@ export function RuleFormPage() {
     setConfigOpen(true);
   }
 
+  function handleConfigClose() {
+    if (selectedId) markTouched(selectedId);
+    setConfigOpen(false);
+  }
+
   function patchSelected(patch: Partial<GraphNode>) {
     if (!selected) return;
+    markTouched(selected.id);
     setGraph((current) => {
       const next = updateNode(current, selected.id, patch);
       return refineGraphSlots(next, integrations);
@@ -139,6 +168,8 @@ export function RuleFormPage() {
   }
 
   async function handleSave() {
+    setSaveAttempted(true);
+    setTouchedIds(new Set(graph.nodes.map((node) => node.id)));
     const check = validateGraphSetup(graph, integrations, graphValidation(graph));
     if (!check.ok) {
       setError(check.message ?? "Complete the graph before saving");
@@ -336,6 +367,7 @@ export function RuleFormPage() {
         state={graph}
         integrations={integrations}
         selectedId={selectedId}
+        touchedIds={touchedIds}
         onSelect={setSelectedId}
         onConfigure={handleConfigure}
         onAddChild={handleAddChild}
@@ -347,7 +379,7 @@ export function RuleFormPage() {
         node={selected}
         graph={graph}
         integrations={integrations}
-        onClose={() => setConfigOpen(false)}
+        onClose={handleConfigClose}
         onChange={patchSelected}
       />
 
@@ -361,7 +393,7 @@ export function RuleFormPage() {
           {isEditing ? "Save changes" : "Save rule"}
         </Button>
       </Space>
-      {!validation.ok && validation.message && (
+      {!validation.ok && validation.message && (isEditing || saveAttempted || touchedIds.size > 0) && (
         <Alert
           type="warning"
           showIcon
