@@ -17,3 +17,4 @@ config/users.json
 .env
 backend/.env
 frontend/.env
+frontend/tsconfig.tsbuildinfo
