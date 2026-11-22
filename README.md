@@ -32,6 +32,10 @@ Services:
 
 Rule YAML and integration config are mounted from `./rules` and `./config`.
 
+### Gmail
+
+Configure under **Integrations → Gmail** with your Gmail address and a [Google App Password](https://myaccount.google.com/apppasswords) (2-Step Verification required). Actions: **Send an email** and **Send weather report**.
+
 ## Local development (without full Docker)
 
 You still need Redis for the queue:

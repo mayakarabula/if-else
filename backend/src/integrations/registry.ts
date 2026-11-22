@@ -2,6 +2,10 @@ import type { IntegrationDefinition } from "./types.js";
 import { dailyAt } from "./time/triggers.js";
 import { fetchData, temperatureAbove, temperatureBelow } from "./weather/triggers.js";
 import { sendMessage, sendWeatherReport } from "./telegram/actions.js";
+import {
+  sendEmail as gmailSendEmail,
+  sendWeatherReport as gmailSendWeatherReport,
+} from "./gmail/actions.js";
 import { deviceOnNetwork, scanNetwork } from "./wifi/triggers.js";
 
 export const integrations: IntegrationDefinition[] = [
@@ -32,6 +36,13 @@ export const integrations: IntegrationDefinition[] = [
     icon: "send",
     color: "#0088CC",
     actions: [sendMessage, sendWeatherReport],
+  },
+  {
+    id: "gmail",
+    name: "Gmail",
+    icon: "mail",
+    color: "#EA4335",
+    actions: [gmailSendEmail, gmailSendWeatherReport],
   },
 ];
 
