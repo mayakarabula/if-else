@@ -344,6 +344,8 @@ export async function enqueueDueRules() {
 
   for (const rule of rules) {
     if (!rule.enabled) continue;
+    // Webhook rules only run when their hook URL is called.
+    if (rule.runTrigger === "webhook") continue;
 
     const state = ruleStates.get(rule.id) ?? { lastChecked: 0, clauses: {} };
     const interval = rulePollInterval(rule.if);

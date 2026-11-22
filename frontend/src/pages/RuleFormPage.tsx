@@ -6,16 +6,26 @@ import {
   Button,
   Form,
   Input,
+  Radio,
   Space,
   Spin,
-  Switch,
   Typography,
   theme,
 } from "antd";
-import { api, type Integration } from "../api/client";
+import { CopyOutlined, ReloadOutlined } from "@ant-design/icons";
+import { api, type Integration, type RuleRunTrigger } from "../api/client";
 import { GraphNodeConfigModal } from "../components/GraphNodeConfigModal";
 import { RuleGraph } from "../components/RuleGraph";
 import { FieldInput, formLayout } from "../components/ui";
+
+type RunMode = "off" | RuleRunTrigger;
+
+function newWebhookToken() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID().replace(/-/g, "");
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
 import {
   addChild,
   createEmptyGraph,
@@ -42,7 +52,8 @@ export function RuleFormPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(isEditing);
   const [name, setName] = useState("New automation");
-  const [enabled, setEnabled] = useState(true);
+  const [runMode, setRunMode] = useState<RunMode>("timer");
+  const [webhookToken, setWebhookToken] = useState(() => newWebhookToken());
   const [graph, setGraph] = useState<GraphState>(createEmptyGraph);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
@@ -67,7 +78,9 @@ export function RuleFormPage() {
       .then(([rule, integrationsData]) => {
         setIntegrations(integrationsData);
         setName(rule.name);
-        setEnabled(rule.enabled);
+        if (!rule.enabled) setRunMode("off");
+        else setRunMode(rule.runTrigger === "webhook" ? "webhook" : "timer");
+        setWebhookToken(rule.webhookToken?.trim() || newWebhookToken());
         const next = refineGraphSlots(ruleToGraph(rule, integrationsData), integrationsData);
         setGraph(next);
         setSelectedId(next.nodes[0]?.id ?? null);
@@ -140,9 +153,14 @@ export function RuleFormPage() {
     setError(null);
 
     const flow = graphToRulePayload(graph);
+    const token = webhookToken.trim() || newWebhookToken();
+    if (runMode === "webhook" && !webhookToken.trim()) setWebhookToken(token);
+    const runTrigger: RuleRunTrigger = runMode === "webhook" ? "webhook" : "timer";
     const payload = {
       name: name.trim(),
-      enabled,
+      enabled: runMode !== "off",
+      runTrigger,
+      ...(runMode === "webhook" ? { webhookToken: token } : {}),
       ...flow,
     };
 
@@ -225,50 +243,93 @@ export function RuleFormPage() {
           </Form.Item>
         </Form>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 20,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <Typography.Text strong>Run automatically</Typography.Text>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div>
+            <Typography.Text strong>Run when</Typography.Text>
             <div>
               <Typography.Text type="secondary">
-                {enabled
-                  ? "On — evaluates when your If conditions match."
-                  : "Off — saved paused until you turn it on."}
+                Choose a timer, a webhook URL, or keep the rule paused.
               </Typography.Text>
             </div>
           </div>
-          <Switch
-            checked={enabled}
-            onChange={setEnabled}
-            checkedChildren="On"
-            unCheckedChildren="Off"
-          />
-        </div>
 
-        {!hasTimeClause && (
-          <Form
-            layout="horizontal"
-            labelAlign="left"
-            colon={false}
-            requiredMark={false}
-            labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
-            wrapperCol={{ flex: "1 1 auto" }}
-            style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 24 }}
-          >
-            <FieldInput
-              field={{ key: "pollInterval", label: "Check every", type: "text", placeholder: "15m" }}
-              value={graph.pollInterval}
-              onChange={(value) => setGraph((current) => ({ ...current, pollInterval: String(value) }))}
-              compact
-            />
-          </Form>
-        )}
+          <Radio.Group
+            value={runMode}
+            onChange={(e) => {
+              const next = e.target.value as RunMode;
+              setRunMode(next);
+              if (next === "webhook" && !webhookToken.trim()) {
+                setWebhookToken(newWebhookToken());
+              }
+            }}
+            optionType="button"
+            buttonStyle="solid"
+            options={[
+              { label: "Paused", value: "off" },
+              { label: "On a timer", value: "timer" },
+              { label: "Webhook URL", value: "webhook" },
+            ]}
+          />
+
+          {runMode === "timer" && !hasTimeClause && (
+            <Form
+              layout="horizontal"
+              labelAlign="left"
+              colon={false}
+              requiredMark={false}
+              labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
+              wrapperCol={{ flex: "1 1 auto" }}
+              style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 24 }}
+            >
+              <FieldInput
+                field={{ key: "pollInterval", label: "Check every", type: "text", placeholder: "15m" }}
+                value={graph.pollInterval}
+                onChange={(value) => setGraph((current) => ({ ...current, pollInterval: String(value) }))}
+                compact
+              />
+            </Form>
+          )}
+
+          {runMode === "timer" && hasTimeClause && (
+            <Typography.Text type="secondary">
+              This rule uses a Time condition, so it is checked on the daily schedule instead of a poll
+              interval.
+            </Typography.Text>
+          )}
+
+          {runMode === "webhook" && (
+            <div style={{ display: "grid", gap: 8 }}>
+              <Typography.Text type="secondary">
+                Call this URL (GET or POST) to evaluate the rule. Anyone with the link can trigger it.
+              </Typography.Text>
+              <Space.Compact style={{ width: "100%", maxWidth: 520 }}>
+                <Input
+                  readOnly
+                  value={`${typeof window !== "undefined" ? window.location.origin : ""}/api/hooks/${webhookToken}`}
+                />
+                <Button
+                  icon={<CopyOutlined />}
+                  onClick={async () => {
+                    const url = `${window.location.origin}/api/hooks/${webhookToken}`;
+                    try {
+                      await navigator.clipboard.writeText(url);
+                      message.success("Webhook URL copied");
+                    } catch {
+                      message.error("Could not copy URL");
+                    }
+                  }}
+                >
+                  Copy
+                </Button>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => setWebhookToken(newWebhookToken())}
+                  title="Generate a new token"
+                />
+              </Space.Compact>
+            </div>
+          )}
+        </div>
       </div>
 
       <RuleGraph

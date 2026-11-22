@@ -68,7 +68,8 @@ Set `REDIS_HOST=127.0.0.1` in `backend/.env` (see `.env.example`).
 
 ## Queue behavior
 
-- Every 30s the API enqueues enabled rules whose poll interval has elapsed
-- Manual **Run** enqueues a job and waits for the worker result
+- Rules can run **on a timer** (default), via a **webhook URL** (`GET|POST /api/hooks/:token`), or stay **paused**
+- Every 30s the API enqueues enabled timer rules whose poll interval has elapsed (webhook rules are skipped)
+- Manual **Run** and webhook calls enqueue a job and wait for the worker result
 - Workers process with concurrency `WORKER_CONCURRENCY` (default 2)
 - **Arena** dashboard at [/arena](http://localhost:5173/arena) (proxied; requires login)

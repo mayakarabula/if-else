@@ -6,7 +6,7 @@ import passport from "passport";
 import { authRouter } from "./auth/routes.js";
 import { requireAuth, requireAuthPage } from "./auth/middleware.js";
 import { configurePassport } from "./auth/passport.js";
-import { integrationsRouter, rulesRouter, runsRouter } from "./api/routes.js";
+import { hooksRouter, integrationsRouter, rulesRouter, runsRouter } from "./api/routes.js";
 import { createArenaMiddleware } from "./engine/arena.js";
 import { getProducerQueue, waitForQueueReady } from "./engine/queue.js";
 import { startScheduler } from "./engine/scheduler.js";
@@ -60,6 +60,7 @@ async function main() {
   });
 
   app.use("/api/auth", authRouter);
+  app.use("/api/hooks", hooksRouter);
   app.use("/api/rules", requireAuth, rulesRouter);
   app.use("/api/integrations", requireAuth, integrationsRouter);
   app.use("/api/runs", requireAuth, runsRouter);
