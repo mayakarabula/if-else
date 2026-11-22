@@ -7,6 +7,7 @@ const icons: Record<string, string> = {
   send: "✈️",
   clock: "🕘",
   wifi: "📶",
+  mail: "✉️",
 };
 
 /** Shared horizontal form layout so labels and controls line up across the app. */

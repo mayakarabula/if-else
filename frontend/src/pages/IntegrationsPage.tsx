@@ -6,11 +6,40 @@ import { FieldInput, formLayout, IntegrationIcon } from "../components/ui";
 
 const integrationFields: Record<
   string,
-  { key: string; label: string; type: "text" | "textarea"; placeholder?: string }[]
+  {
+    key: string;
+    label: string;
+    type: "text" | "textarea";
+    placeholder?: string;
+    required?: boolean;
+  }[]
 > = {
   telegram: [
-    { key: "botToken", label: "Bot token", type: "text", placeholder: "123456:ABC..." },
-    { key: "chatId", label: "Chat ID", type: "text", placeholder: "123456789" },
+    { key: "botToken", label: "Bot token", type: "text", placeholder: "123456:ABC...", required: true },
+    { key: "chatId", label: "Chat ID", type: "text", placeholder: "123456789", required: true },
+  ],
+  gmail: [
+    {
+      key: "email",
+      label: "Gmail address",
+      type: "text",
+      placeholder: "you@gmail.com",
+      required: true,
+    },
+    {
+      key: "appPassword",
+      label: "App password",
+      type: "text",
+      placeholder: "xxxx xxxx xxxx xxxx",
+      required: true,
+    },
+    {
+      key: "defaultTo",
+      label: "Default To (optional)",
+      type: "text",
+      placeholder: "alerts@example.com",
+      required: false,
+    },
   ],
 };
 
@@ -20,6 +49,8 @@ const integrationCopy: Record<string, string> = {
     "Open-Meteo weather conditions and data — no API key. Pick a place when you build a rule.",
   wifi: "Discover devices on this machine’s LAN (ARP + ping). Match a device IP or scan nearby hosts.",
   telegram: "Send messages and weather reports via a Telegram bot. Configure token and chat ID here.",
+  gmail:
+    "Send emails and weather reports through Gmail SMTP. Use a Google App Password (2-Step Verification required).",
 };
 
 function configStatus(
@@ -29,7 +60,8 @@ function configStatus(
   const fields = integrationFields[integrationId];
   if (!fields || fields.length === 0) return "no_setup";
   const values = config[integrationId] ?? {};
-  const complete = fields.every((field) => String(values[field.key] ?? "").trim().length > 0);
+  const required = fields.filter((field) => field.required !== false);
+  const complete = required.every((field) => String(values[field.key] ?? "").trim().length > 0);
   return complete ? "ready" : "needs_setup";
 }
 
