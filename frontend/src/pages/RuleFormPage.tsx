@@ -7,6 +7,7 @@ import {
   Form,
   Input,
   Radio,
+  Select,
   Space,
   Spin,
   Typography,
@@ -16,9 +17,21 @@ import { CopyOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api, type Integration, type RuleRunTrigger } from "../api/client";
 import { GraphNodeConfigModal } from "../components/GraphNodeConfigModal";
 import { RuleGraph } from "../components/RuleGraph";
-import { FieldInput, formLayout } from "../components/ui";
+import { formLayout } from "../components/ui";
 
 type RunMode = "off" | RuleRunTrigger;
+
+const POLL_INTERVAL_OPTIONS = [
+  { value: "30s", label: "Every 30 seconds" },
+  { value: "1m", label: "Every 1 minute" },
+  { value: "5m", label: "Every 5 minutes" },
+  { value: "15m", label: "Every 15 minutes" },
+  { value: "30m", label: "Every 30 minutes" },
+  { value: "1h", label: "Every hour" },
+  { value: "6h", label: "Every 6 hours" },
+  { value: "12h", label: "Every 12 hours" },
+  { value: "24h", label: "Every day" },
+] as const;
 
 function newWebhookToken() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -302,7 +315,7 @@ export function RuleFormPage() {
             ]}
           />
 
-          {runMode === "timer" && !hasTimeClause && (
+          {runMode === "timer" && (
             <Form
               layout="horizontal"
               labelAlign="left"
@@ -312,20 +325,35 @@ export function RuleFormPage() {
               wrapperCol={{ flex: "1 1 auto" }}
               style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 24 }}
             >
-              <FieldInput
-                field={{ key: "pollInterval", label: "Check every", type: "text", placeholder: "15m" }}
-                value={graph.pollInterval}
-                onChange={(value) => setGraph((current) => ({ ...current, pollInterval: String(value) }))}
-                compact
-              />
+              <Form.Item
+                label="Poll interval"
+                style={{ marginBottom: 0 }}
+                help={
+                  hasTimeClause
+                    ? "Time conditions still wake the rule near the scheduled minute; this interval is used for other checks."
+                    : "How often to evaluate If conditions while the rule is on a timer."
+                }
+              >
+                <Select
+                  value={
+                    POLL_INTERVAL_OPTIONS.some((option) => option.value === graph.pollInterval)
+                      ? graph.pollInterval
+                      : graph.pollInterval || "15m"
+                  }
+                  options={[
+                    ...POLL_INTERVAL_OPTIONS,
+                    ...(!POLL_INTERVAL_OPTIONS.some((option) => option.value === graph.pollInterval) &&
+                    graph.pollInterval
+                      ? [{ value: graph.pollInterval, label: `Custom (${graph.pollInterval})` }]
+                      : []),
+                  ]}
+                  onChange={(value) =>
+                    setGraph((current) => ({ ...current, pollInterval: String(value) }))
+                  }
+                  style={{ width: formLayout.controlWidth, maxWidth: "100%" }}
+                />
+              </Form.Item>
             </Form>
-          )}
-
-          {runMode === "timer" && hasTimeClause && (
-            <Typography.Text type="secondary">
-              This rule uses a Time condition, so it is checked on the daily schedule instead of a poll
-              interval.
-            </Typography.Text>
           )}
 
           {runMode === "webhook" && (

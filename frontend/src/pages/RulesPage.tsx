@@ -24,11 +24,14 @@ function RuleCard({
   const elseClauses = normalizeThen(rule.else).all;
   const catchClauses = normalizeThen(rule.catch).all;
 
+  const pollInterval = normalizeIf(rule.if).pollInterval;
   const triggerLabel = !rule.enabled
     ? "Paused"
     : rule.runTrigger === "webhook"
       ? "Webhook"
-      : "Timer";
+      : pollInterval
+        ? `Timer · ${pollInterval}`
+        : "Timer";
 
   return (
     <Card
