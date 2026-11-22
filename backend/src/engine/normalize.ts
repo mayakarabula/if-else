@@ -56,8 +56,10 @@ export function ruleHasTimeTrigger(ifBlock: RuleIf): boolean {
 
 export function rulePollInterval(ifBlock: RuleIf): number {
   const normalized = normalizeIf(ifBlock);
-  if (ruleHasTimeTrigger(ifBlock)) return 30_000;
-  return parsePollInterval(normalized.pollInterval);
+  const configured = parsePollInterval(normalized.pollInterval);
+  // Time conditions need frequent checks so the scheduled minute is not missed.
+  if (ruleHasTimeTrigger(ifBlock)) return Math.min(configured, 30_000);
+  return configured;
 }
 
 function parsePollInterval(interval?: string): number {

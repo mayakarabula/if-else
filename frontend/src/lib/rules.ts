@@ -69,18 +69,14 @@ export function serializeIf(
   pollInterval: string,
   mode: ConditionMode = "all",
 ): RuleIf {
-  const hasTime = clauses.some((clause) => clause.integration === "time");
   const key = mode === "any" ? "any" : "all";
+  const interval = pollInterval.trim() || "15m";
 
   if (clauses.length === 1 && mode === "all") {
-    const clause = clauses[0];
-    if (hasTime) return clause;
-    return { ...clause, pollInterval };
+    return { ...clauses[0], pollInterval: interval };
   }
 
-  const block: RuleIfBlock = { [key]: clauses };
-  if (!hasTime) block.pollInterval = pollInterval;
-  return block;
+  return { [key]: clauses, pollInterval: interval };
 }
 
 export function serializeThen(clauses: RuleThenClause[]): RuleThen | undefined {
