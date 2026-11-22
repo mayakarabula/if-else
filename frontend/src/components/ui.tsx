@@ -8,6 +8,8 @@ const icons: Record<string, string> = {
   clock: "🕘",
   wifi: "📶",
   mail: "✉️",
+  home: "🏠",
+  zigbee: "📡",
 };
 
 /** Shared horizontal form layout so labels and controls line up across the app. */

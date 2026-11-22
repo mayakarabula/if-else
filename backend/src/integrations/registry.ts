@@ -7,6 +7,15 @@ import {
   sendWeatherReport as gmailSendWeatherReport,
 } from "./gmail/actions.js";
 import { deviceOnNetwork, scanNetwork } from "./wifi/triggers.js";
+import {
+  callHaService,
+  toggle as haToggle,
+  turnOff as haTurnOff,
+  turnOn as haTurnOn,
+} from "./homeassistant/actions.js";
+import { entityStateIs, fetchEntityState } from "./homeassistant/triggers.js";
+import { publishSet, setBrightness, setState } from "./zigbee/actions.js";
+import { attributeEquals, deviceStateIs, fetchDeviceState } from "./zigbee/triggers.js";
 
 export const integrations: IntegrationDefinition[] = [
   {
@@ -29,6 +38,22 @@ export const integrations: IntegrationDefinition[] = [
     icon: "wifi",
     color: "#0D9488",
     triggers: [deviceOnNetwork, scanNetwork],
+  },
+  {
+    id: "homeassistant",
+    name: "Home Assistant",
+    icon: "home",
+    color: "#18BCF2",
+    triggers: [entityStateIs, fetchEntityState],
+    actions: [haTurnOn, haTurnOff, haToggle, callHaService],
+  },
+  {
+    id: "zigbee",
+    name: "Zigbee",
+    icon: "zigbee",
+    color: "#EB8C00",
+    triggers: [deviceStateIs, attributeEquals, fetchDeviceState],
+    actions: [setState, setBrightness, publishSet],
   },
   {
     id: "telegram",
