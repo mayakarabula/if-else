@@ -368,3 +368,18 @@ export const NODE_COLORS: Record<GraphNodeKind, { fill: string; stroke: string; 
   else: { fill: "#8b4d3b", stroke: "#6f3d2f", label: "ELSE" },
   catch: { fill: "#b45309", stroke: "#92400e", label: "CATCH" },
 };
+
+/** Dark-mode accents stay in the same warm family but stay readable on espresso parchment. */
+export const NODE_COLORS_DARK: Record<GraphNodeKind, { fill: string; stroke: string; label: string }> = {
+  if: { fill: "#d9cdb6", stroke: "#cfc3a8", label: "IF" },
+  and: { fill: "#c4a05a", stroke: "#a88840", label: "AND" },
+  or: { fill: "#7aa2d4", stroke: "#5b7c99", label: "OR" },
+  source: { fill: "#2dd4bf", stroke: "#14b8a6", label: "SOURCE" },
+  then: { fill: "#6b9b7a", stroke: "#4f7d60", label: "THEN" },
+  else: { fill: "#c47862", stroke: "#a05c48", label: "ELSE" },
+  catch: { fill: "#e0a04a", stroke: "#c4842e", label: "CATCH" },
+};
+
+export function nodeColorsForMode(mode: "light" | "dark") {
+  return mode === "dark" ? NODE_COLORS_DARK : NODE_COLORS;
+}

@@ -1,9 +1,17 @@
 import { useState } from "react";
-import { Alert, Button, Divider, Form, Input, Space, Typography, theme } from "antd";
-import { GoogleOutlined, LockOutlined, MailOutlined, UserOutlined } from "@ant-design/icons";
+import { Alert, Button, Divider, Form, Input, Space, Tooltip, Typography, theme } from "antd";
+import {
+  GoogleOutlined,
+  LockOutlined,
+  MailOutlined,
+  MoonOutlined,
+  SunOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { useThemeMode } from "../theme";
 
 const ERROR_MESSAGES: Record<string, string> = {
   google_failed: "Google sign-in failed. Please try again.",
@@ -15,6 +23,7 @@ type Mode = "login" | "register";
 export function LoginPage() {
   const { user, loading, refresh } = useAuth();
   const { token } = theme.useToken();
+  const { mode: colorMode, toggleMode } = useThemeMode();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const error = params.get("error");
@@ -48,8 +57,24 @@ export function LoginPage() {
         placeItems: "center",
         padding: 24,
         background: token.colorBgLayout,
+        position: "relative",
       }}
     >
+      <Tooltip title={colorMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+        <Button
+          type="text"
+          aria-label={colorMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          icon={colorMode === "dark" ? <SunOutlined /> : <MoonOutlined />}
+          onClick={toggleMode}
+          style={{
+            position: "absolute",
+            top: 16,
+            right: 16,
+            width: 40,
+            height: 40,
+          }}
+        />
+      </Tooltip>
       <div
         style={{
           width: "100%",
