@@ -30,6 +30,7 @@ import {
   type GraphNodeKind,
   type GraphState,
 } from "../lib/graph";
+import { validateGraphSetup } from "../lib/graphIssues";
 
 export function RuleFormPage() {
   const { message } = App.useApp();
@@ -82,7 +83,10 @@ export function RuleFormPage() {
     [graph.nodes, selectedId],
   );
 
-  const validation = graphValidation(graph);
+  const validation = useMemo(
+    () => validateGraphSetup(graph, integrations, graphValidation(graph)),
+    [graph, integrations],
+  );
   const hasTimeClause = graph.nodes.some(
     (n) => isConditionKind(n.kind) && n.integration === "time" && n.trigger,
   );
@@ -122,7 +126,7 @@ export function RuleFormPage() {
   }
 
   async function handleSave() {
-    const check = graphValidation(graph);
+    const check = validateGraphSetup(graph, integrations, graphValidation(graph));
     if (!check.ok) {
       setError(check.message ?? "Complete the graph before saving");
       return;
@@ -297,9 +301,12 @@ export function RuleFormPage() {
         </Button>
       </Space>
       {!validation.ok && validation.message && (
-        <div style={{ marginTop: 8 }}>
-          <Typography.Text type="secondary">{validation.message}</Typography.Text>
-        </div>
+        <Alert
+          type="warning"
+          showIcon
+          message={validation.message}
+          style={{ marginTop: 12 }}
+        />
       )}
     </div>
   );

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as d3 from "d3";
-import { Button, Dropdown, Space, Typography, theme } from "antd";
+import { Button, Dropdown, Space, Tooltip, Typography, theme } from "antd";
 import {
   DeleteOutlined,
   PlusOutlined,
   SettingOutlined,
+  WarningFilled,
   ZoomInOutlined,
   ZoomOutOutlined,
   AimOutlined,
@@ -22,8 +23,11 @@ import {
   type GraphNodeKind,
   type GraphState,
 } from "../lib/graph";
+import { analyzeGraphIssues, type GraphIssue } from "../lib/graphIssues";
 import { clauseLabel, formatClauseOverview } from "../lib/rules";
 import { useThemeMode } from "../theme";
+
+const ISSUE_RED = "#c45c4a";
 
 const NODE_W = 188;
 const NODE_H = 84;
@@ -257,6 +261,11 @@ export function RuleGraph({
     return ids;
   }, [selectedId, state.nodes]);
 
+  const nodeIssues = useMemo(
+    () => analyzeGraphIssues(state, integrations),
+    [state, integrations],
+  );
+
   const PATH_BLUE = mode === "dark" ? "#8eb6e0" : "#7aa2d4";
   const graphHeight = isMobile ? Math.min(Math.max(height + 48, 520), 720) : 440;
 
@@ -481,10 +490,19 @@ export function RuleGraph({
           {laid.map((item) => {
             const nodeColor = colors[item.node.kind];
             const selected = selectedId === item.id;
+            const issues: GraphIssue[] = nodeIssues.get(item.id) ?? [];
+            const hasIssue = issues.length > 0;
             const addOptions = allowedChildKinds(item.node, state.nodes);
             const canRemove = !(item.node.kind === "if" && item.node.parentId === null);
             const title = kindLabel(item.node, state.nodes, colors);
-            const subtitle = nodeSubtitle(item.node, integrations);
+            const subtitle = hasIssue
+              ? issues.map((issue) => issue.message).join(" · ")
+              : nodeSubtitle(item.node, integrations);
+            const fill = hasIssue
+              ? "color-mix(in srgb, #c45c4a 10%, transparent)"
+              : selected
+                ? token.colorPrimaryBg
+                : token.colorBgContainer;
 
             return (
               <g
@@ -505,18 +523,18 @@ export function RuleGraph({
                   <rect
                     width={NODE_W}
                     height={NODE_H}
-                    fill={selected ? token.colorPrimaryBg : token.colorBgContainer}
+                    fill={fill}
                     className="rule-graph-node"
                   />
-                  <rect width={ACCENT_W} height={NODE_H} fill={nodeColor.fill} />
+                  <rect width={ACCENT_W} height={NODE_H} fill={hasIssue ? ISSUE_RED : nodeColor.fill} />
                 </g>
                 <rect
                   width={NODE_W}
                   height={NODE_H}
                   rx={12}
                   fill="none"
-                  stroke={token.colorBorder}
-                  strokeWidth={1.25}
+                  stroke={hasIssue ? ISSUE_RED : token.colorBorder}
+                  strokeWidth={hasIssue ? 2 : 1.25}
                   pointerEvents="none"
                 />
 
@@ -526,7 +544,7 @@ export function RuleGraph({
                   fontSize={11}
                   fontWeight={800}
                   letterSpacing="0.08em"
-                  fill={nodeColor.fill}
+                  fill={hasIssue ? ISSUE_RED : nodeColor.fill}
                 >
                   {title}
                 </text>
@@ -536,7 +554,7 @@ export function RuleGraph({
                     style={{
                       fontSize: 11,
                       lineHeight: 1.3,
-                      color: token.colorTextSecondary,
+                      color: hasIssue ? ISSUE_RED : token.colorTextSecondary,
                       overflow: "hidden",
                       display: "-webkit-box",
                       WebkitLineClamp: 2,
@@ -547,6 +565,35 @@ export function RuleGraph({
                     {subtitle}
                   </div>
                 </foreignObject>
+
+                {hasIssue && (
+                  <foreignObject x={NODE_W - 62} y={8} width={28} height={28}>
+                    <Tooltip
+                      title={
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {issues.map((issue, index) => (
+                            <div key={`${issue.code}-${index}`}>{issue.message}</div>
+                          ))}
+                        </div>
+                      }
+                    >
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          width: 22,
+                          height: 22,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: ISSUE_RED,
+                          fontSize: 14,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <WarningFilled />
+                      </span>
+                    </Tooltip>
+                  </foreignObject>
+                )}
 
                 <foreignObject x={NODE_W - 34} y={8} width={28} height={28}>
                   <button
