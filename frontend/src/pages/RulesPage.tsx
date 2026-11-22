@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, App, Button, Card, Col, Empty, Row, Space, Spin, Typography } from "antd";
+import { Alert, App, Button, Card, Col, Empty, Row, Space, Spin, Tag, Typography } from "antd";
 import { PlusOutlined, PlayCircleOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api, getIntegration, type Integration, type Rule } from "../api/client";
 import { FlowArrow, IntegrationIcon, Toggle } from "../components/ui";
@@ -24,9 +24,20 @@ function RuleCard({
   const elseClauses = normalizeThen(rule.else).all;
   const catchClauses = normalizeThen(rule.catch).all;
 
+  const triggerLabel = !rule.enabled
+    ? "Paused"
+    : rule.runTrigger === "webhook"
+      ? "Webhook"
+      : "Timer";
+
   return (
     <Card
-      title={rule.name}
+      title={
+        <Space size={8} wrap>
+          <span>{rule.name}</span>
+          <Tag>{triggerLabel}</Tag>
+        </Space>
+      }
       extra={<Toggle checked={rule.enabled} onChange={() => onToggle(rule.id)} label={`Toggle ${rule.name}`} />}
       actions={[
         <Link key="edit" to={`/rules/${rule.id}/edit`}>

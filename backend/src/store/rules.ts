@@ -46,10 +46,20 @@ export interface RuleThenBlock {
 
 export type RuleThen = RuleThenClause | RuleThenBlock;
 
+/** How an enabled rule is kicked off. Defaults to timer for legacy rules. */
+export type RuleRunTrigger = "timer" | "webhook";
+
 export interface Rule {
   id: string;
   name: string;
   enabled: boolean;
+  /**
+   * When enabled: `timer` polls on an interval; `webhook` only runs when the
+   * hook URL is called. Omitted / unknown → treated as `timer`.
+   */
+  runTrigger?: RuleRunTrigger;
+  /** Secret path segment for `/api/hooks/:token` when runTrigger is webhook. */
+  webhookToken?: string;
   if: RuleIf;
   then: RuleThen;
   /** Actions to run when the If conditions do not pass. */
@@ -58,6 +68,11 @@ export interface Rule {
   catch?: RuleThen;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export function ruleRunTrigger(rule: Pick<Rule, "enabled" | "runTrigger">): RuleRunTrigger | "off" {
+  if (!rule.enabled) return "off";
+  return rule.runTrigger === "webhook" ? "webhook" : "timer";
 }
 
 export interface RunLog {

@@ -75,10 +75,15 @@ export interface RuleThenBlock {
 
 export type RuleThen = RuleThenClause | RuleThenBlock;
 
+export type RuleRunTrigger = "timer" | "webhook";
+
 export interface Rule {
   id: string;
   name: string;
   enabled: boolean;
+  /** `timer` (default) polls; `webhook` only runs via `/api/hooks/:token`. */
+  runTrigger?: RuleRunTrigger;
+  webhookToken?: string;
   if: RuleIf;
   then: RuleThen;
   else?: RuleThen;
