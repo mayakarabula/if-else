@@ -34,7 +34,7 @@ Rule YAML and integration config are mounted from `./rules` and `./config`.
 
 ### Gmail
 
-Configure under **Integrations → Gmail** with your Gmail address and a [Google App Password](https://myaccount.google.com/apppasswords) (2-Step Verification required). Actions: **Send an email** and **Send weather report**.
+Configure under **Integrations → Gmail** with your Gmail address and a [Google App Password](https://myaccount.google.com/apppasswords) (2-Step Verification required). Action: **Send an email** (use a Weather SOURCE for report templates).
 
 ### Home Assistant
 

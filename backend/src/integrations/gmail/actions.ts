@@ -1,7 +1,6 @@
 import nodemailer from "nodemailer";
 import { failStep } from "../errors.js";
 import type { ActionDefinition } from "../types.js";
-import { fetchWeatherSnapshot, formatWeatherReport } from "../weather/client.js";
 
 function interpolate(template: string, data: Record<string, unknown>): string {
   const context = { ...data, trigger: data };
@@ -181,99 +180,6 @@ export const sendEmail: ActionDefinition = {
       subject,
       text,
       step: sendEmail,
-    });
-  },
-};
-
-export const sendWeatherReport: ActionDefinition = {
-  id: "send_weather_report",
-  label: "Send weather report",
-  description: "Fetch current weather and email a formatted report via Gmail.",
-  actionPlan: [
-    "Load Gmail address and app password from Integrations",
-    "Validate the selected place has coordinates",
-    "Fetch weather from Open-Meteo and format a report",
-    "Email the report via Gmail SMTP",
-  ],
-  errorCallback: [
-    ...GMAIL_ERROR_CALLBACK,
-    { path: "location", label: "Location", description: "Place used for the weather report" },
-  ],
-  fields: [
-    {
-      key: "to",
-      label: "To",
-      type: "text",
-      required: false,
-      placeholder: "friend@example.com (or use Integrations default)",
-    },
-    {
-      key: "subject",
-      label: "Subject",
-      type: "text",
-      required: false,
-      placeholder: "Weather report",
-      default: "Weather report",
-    },
-    {
-      key: "location",
-      label: "Place",
-      type: "place",
-      required: true,
-      placeholder: "Search for a city…",
-    },
-  ],
-  async execute(config, context) {
-    const from = requireFromEmail(context.integrationConfig, sendWeatherReport);
-    const appPassword = requireAppPassword(context.integrationConfig, sendWeatherReport);
-    const to = resolveTo(config, context.integrationConfig, context.triggerData, sendWeatherReport);
-    const location = String(config.location ?? "Unknown");
-    const lat = Number(config.latitude);
-    const lon = Number(config.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      failStep({
-        message: "Pick a place so latitude and longitude are set",
-        code: "gmail.missing_place",
-        integration: "gmail",
-        step: sendWeatherReport.id,
-        stepLabel: sendWeatherReport.label,
-        kind: "action",
-        plan: sendWeatherReport.actionPlan,
-        extras: { from, to, subject: "", location },
-      });
-    }
-
-    let report: string;
-    try {
-      const snapshot = await fetchWeatherSnapshot(lat, lon, location);
-      report = formatWeatherReport(snapshot);
-    } catch (err) {
-      failStep({
-        message: err instanceof Error ? err.message : "Weather fetch failed",
-        code: "gmail.weather_fetch_failed",
-        integration: "gmail",
-        step: sendWeatherReport.id,
-        stepLabel: sendWeatherReport.label,
-        kind: "action",
-        plan: sendWeatherReport.actionPlan,
-        extras: { from, to, subject: "", location },
-      });
-    }
-
-    const header = context.triggerData.time
-      ? `Good morning! (${context.triggerData.time} ${context.triggerData.timezone ?? ""})\n\n`
-      : "";
-    const subject =
-      interpolate(String(config.subject ?? "Weather report"), context.triggerData).trim() ||
-      "Weather report";
-
-    await sendGmailMessage({
-      from,
-      appPassword,
-      to,
-      subject,
-      text: `${header}${report}`,
-      step: sendWeatherReport,
     });
   },
 };

@@ -1,6 +1,5 @@
 import { failStep } from "../errors.js";
 import type { ActionDefinition } from "../types.js";
-import { fetchWeatherSnapshot, formatWeatherReport } from "../weather/client.js";
 
 function interpolate(template: string, data: Record<string, unknown>): string {
   const context = { ...data, trigger: data };
@@ -124,72 +123,5 @@ export const sendMessage: ActionDefinition = {
     const template = String(config.text ?? "");
     const text = interpolate(template, context.triggerData);
     await sendTelegramMessage(botToken, chatId, text, sendMessage);
-  },
-};
-
-export const sendWeatherReport: ActionDefinition = {
-  id: "send_weather_report",
-  label: "Send weather report",
-  description: "Fetch current weather and send a formatted report to Telegram.",
-  actionPlan: [
-    "Load bot token and chat ID from Integrations",
-    "Validate the selected place has coordinates",
-    "Fetch weather from Open-Meteo and format a report",
-    "Send the report to Telegram",
-  ],
-  errorCallback: [
-    ...TELEGRAM_ERROR_CALLBACK,
-    { path: "location", label: "Location", description: "Place used for the weather report" },
-  ],
-  fields: [
-    {
-      key: "location",
-      label: "Place",
-      type: "place",
-      required: true,
-      placeholder: "Search for a city…",
-    },
-  ],
-  async execute(config, context) {
-    const botToken = requireBotToken(context.integrationConfig, sendWeatherReport);
-    const chatId = resolveChatId(config, context.integrationConfig, sendWeatherReport);
-    const location = String(config.location ?? "Unknown");
-    const lat = Number(config.latitude);
-    const lon = Number(config.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-      failStep({
-        message: "Pick a place so latitude and longitude are set",
-        code: "telegram.missing_place",
-        integration: "telegram",
-        step: "send_weather_report",
-        stepLabel: sendWeatherReport.label,
-        kind: "action",
-        plan: sendWeatherReport.actionPlan,
-        extras: { chatId, location },
-      });
-    }
-
-    let report: string;
-    try {
-      const snapshot = await fetchWeatherSnapshot(lat, lon, location);
-      report = formatWeatherReport(snapshot);
-    } catch (err) {
-      failStep({
-        message: err instanceof Error ? err.message : "Weather fetch failed",
-        code: "telegram.weather_fetch_failed",
-        integration: "telegram",
-        step: "send_weather_report",
-        stepLabel: sendWeatherReport.label,
-        kind: "action",
-        plan: sendWeatherReport.actionPlan,
-        extras: { chatId, location },
-      });
-    }
-
-    const header = context.triggerData.time
-      ? `☀️ Good morning! (${context.triggerData.time} ${context.triggerData.timezone ?? ""})\n\n`
-      : "";
-
-    await sendTelegramMessage(botToken, chatId, `${header}${report}`, sendWeatherReport);
   },
 };
