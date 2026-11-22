@@ -14,6 +14,12 @@ export interface TriggerOutput {
   description?: string;
 }
 
+export interface ErrorCallbackField {
+  path: string;
+  label: string;
+  description?: string;
+}
+
 export interface TriggerMeta {
   id: string;
   label: string;
@@ -21,6 +27,8 @@ export interface TriggerMeta {
   kind?: "condition" | "data";
   fields: FieldSchema[];
   outputs?: TriggerOutput[];
+  actionPlan?: string[];
+  errorCallback?: ErrorCallbackField[];
 }
 
 export interface ActionMeta {
@@ -28,6 +36,8 @@ export interface ActionMeta {
   label: string;
   description: string;
   fields: FieldSchema[];
+  actionPlan?: string[];
+  errorCallback?: ErrorCallbackField[];
 }
 
 export interface Integration {
@@ -46,7 +56,8 @@ export interface RuleIfClause {
 }
 
 export interface RuleIfBlock {
-  all: RuleIfClause[];
+  all?: RuleIfClause[];
+  any?: RuleIfClause[];
   pollInterval?: string;
 }
 
@@ -70,6 +81,8 @@ export interface Rule {
   enabled: boolean;
   if: RuleIf;
   then: RuleThen;
+  else?: RuleThen;
+  catch?: RuleThen;
   createdAt?: string;
   updatedAt?: string;
 }
