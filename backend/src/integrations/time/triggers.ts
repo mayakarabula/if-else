@@ -1,3 +1,4 @@
+import { failStep } from "../errors.js";
 import type { TriggerDefinition } from "../types.js";
 
 function getZonedTime(timezone: string, date = new Date()) {
@@ -27,10 +28,29 @@ const TIMEZONE_OPTIONS = Intl.supportedValuesOf("timeZone").map((timezone) => ({
   label: timezone.replaceAll("_", " "),
 }));
 
+const COMMON_ERROR_CALLBACK = [
+  { path: "message", label: "Error message" },
+  { path: "code", label: "Error code" },
+  { path: "integration", label: "Integration id" },
+  { path: "step", label: "Step id" },
+  { path: "stepLabel", label: "Step label" },
+  { path: "kind", label: "Step kind", description: "trigger or action" },
+  { path: "plan", label: "Action plan", description: "Planned steps joined with →" },
+];
+
 export const dailyAt: TriggerDefinition = {
   id: "daily_at",
   label: "Every day at",
   description: "Fires once per day at a specific time.",
+  actionPlan: [
+    "Read hour, minute, and timezone from the rule",
+    "Resolve the current time in that timezone",
+    "Fire once when the clock matches and it has not already fired today",
+  ],
+  errorCallback: [
+    ...COMMON_ERROR_CALLBACK,
+    { path: "timezone", label: "Timezone", description: "Timezone that failed to resolve" },
+  ],
   fields: [
     { key: "hour", label: "Hour (0–23)", type: "number", required: true, default: 9 },
     { key: "minute", label: "Minute (0–59)", type: "number", required: true, default: 0 },
@@ -54,7 +74,22 @@ export const dailyAt: TriggerDefinition = {
     const hour = Number(config.hour);
     const minute = Number(config.minute);
     const timezone = String(config.timezone ?? "Europe/Berlin");
-    const now = getZonedTime(timezone);
+
+    let now: ReturnType<typeof getZonedTime>;
+    try {
+      now = getZonedTime(timezone);
+    } catch (err) {
+      failStep({
+        message: err instanceof Error ? err.message : "Invalid timezone",
+        code: "time.invalid_timezone",
+        integration: "time",
+        step: "daily_at",
+        stepLabel: "Every day at",
+        kind: "trigger",
+        plan: dailyAt.actionPlan,
+        extras: { timezone },
+      });
+    }
 
     if (context.manual) {
       return {

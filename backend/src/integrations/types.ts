@@ -18,11 +18,22 @@ export interface TriggerOutput {
   description?: string;
 }
 
+/** Field available under {{error.*}} when this step fails and CATCH runs. */
+export interface ErrorCallbackField {
+  path: string;
+  label: string;
+  description?: string;
+}
+
 export interface TriggerDefinition {
   id: string;
   label: string;
   description: string;
   kind?: TriggerKind;
+  /** Ordered plan of what this trigger does when evaluated. */
+  actionPlan: string[];
+  /** Error fields this trigger may populate for CATCH handlers. */
+  errorCallback: ErrorCallbackField[];
   fields: FieldSchema[];
   outputs?: TriggerOutput[];
   evaluate: (config: Record<string, unknown>, context: TriggerContext) => Promise<TriggerResult>;
@@ -32,6 +43,10 @@ export interface ActionDefinition {
   id: string;
   label: string;
   description: string;
+  /** Ordered plan of what this action does when executed. */
+  actionPlan: string[];
+  /** Error fields this action may populate for CATCH handlers. */
+  errorCallback: ErrorCallbackField[];
   fields: FieldSchema[];
   execute: (config: Record<string, unknown>, context: ActionContext) => Promise<void>;
 }

@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
+import { IntegrationError, toCatchErrorPayload } from "../integrations/errors.js";
 import { getAction, getTrigger } from "../integrations/registry.js";
 import { enqueueRuleEvaluation } from "./queue.js";
 import { clauseKey, normalizeIf, normalizeThen, ruleHasTimeTrigger, rulePollInterval } from "./normalize.js";
@@ -34,17 +35,37 @@ async function evaluateClause(
 ) {
   const trigger = getTrigger(clause.integration, clause.trigger);
   if (!trigger) {
-    throw new Error(`Unknown trigger: ${clause.integration}.${clause.trigger}`);
+    throw new IntegrationError({
+      message: `Unknown trigger: ${clause.integration}.${clause.trigger}`,
+      code: "engine.unknown_trigger",
+      integration: clause.integration,
+      step: clause.trigger,
+      stepLabel: clause.trigger,
+      kind: "trigger",
+      plan: [],
+    });
   }
 
   const key = clauseKey(clause);
-  const result = await trigger.evaluate(clause.config, {
-    integrationConfig: integrationConfig[clause.integration] ?? {},
-    lastState: clauseStates[key],
-    manual,
-  });
-
-  return { key, result };
+  try {
+    const result = await trigger.evaluate(clause.config, {
+      integrationConfig: integrationConfig[clause.integration] ?? {},
+      lastState: clauseStates[key],
+      manual,
+    });
+    return { key, result };
+  } catch (err) {
+    if (err instanceof IntegrationError) throw err;
+    throw new IntegrationError({
+      message: err instanceof Error ? err.message : "Trigger evaluation failed",
+      code: "engine.trigger_failed",
+      integration: clause.integration,
+      step: trigger.id,
+      stepLabel: trigger.label,
+      kind: "trigger",
+      plan: trigger.actionPlan,
+    });
+  }
 }
 
 async function evaluateIfBlock(
@@ -104,12 +125,33 @@ async function runActions(
   for (const clause of actions) {
     const action = getAction(clause.integration, clause.action);
     if (!action) {
-      throw new Error(`Unknown action: ${clause.integration}.${clause.action}`);
+      throw new IntegrationError({
+        message: `Unknown action: ${clause.integration}.${clause.action}`,
+        code: "engine.unknown_action",
+        integration: clause.integration,
+        step: clause.action,
+        stepLabel: clause.action,
+        kind: "action",
+        plan: [],
+      });
     }
-    await action.execute(clause.config, {
-      integrationConfig: integrationConfig[clause.integration] ?? {},
-      triggerData,
-    });
+    try {
+      await action.execute(clause.config, {
+        integrationConfig: integrationConfig[clause.integration] ?? {},
+        triggerData,
+      });
+    } catch (err) {
+      if (err instanceof IntegrationError) throw err;
+      throw new IntegrationError({
+        message: err instanceof Error ? err.message : "Action execution failed",
+        code: "engine.action_failed",
+        integration: clause.integration,
+        step: action.id,
+        stepLabel: action.label,
+        kind: "action",
+        plan: action.actionPlan,
+      });
+    }
   }
 }
 
@@ -255,7 +297,7 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
     const message = errorMessage(err);
     const triggerData = {
       ...lastTriggerData,
-      error: { message },
+      error: toCatchErrorPayload(err),
     };
 
     if (catchBlock.all.length > 0) {
@@ -274,7 +316,10 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
           ...base,
           status: "error",
           message: `${message} (catch failed: ${errorMessage(catchErr)})`,
-          triggerData,
+          triggerData: {
+            ...triggerData,
+            catchError: toCatchErrorPayload(catchErr),
+          },
         };
         await appendRun(run);
         return run;

@@ -101,6 +101,39 @@ function IntegrationOverviewCard({
         ))}
       </Space>
 
+      {[...conditions, ...sources, ...actions].some((item) => item.actionPlan?.length) && (
+        <div style={{ marginTop: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.04 }}>
+            ACTION PLANS
+          </Typography.Text>
+          {[...conditions, ...sources, ...actions]
+            .filter((item) => item.actionPlan?.length)
+            .map((item) => (
+              <div key={`plan-${item.id}`} style={{ marginTop: 6 }}>
+                <Typography.Text strong style={{ fontSize: 12 }}>
+                  {item.label}
+                </Typography.Text>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 12 }}>
+                  {item.actionPlan!.join(" → ")}
+                </Typography.Paragraph>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {[...conditions, ...sources, ...actions].some((item) => item.errorCallback?.length) && (
+        <Typography.Text type="secondary" style={{ display: "block", marginTop: 10, fontSize: 12 }}>
+          CATCH can use error callback fields like{" "}
+          {[...conditions, ...sources, ...actions]
+            .flatMap((item) => item.errorCallback ?? [])
+            .filter((field, index, all) => all.findIndex((f) => f.path === field.path) === index)
+            .slice(0, 4)
+            .map((field) => `{{error.${field.path}}}`)
+            .join(", ")}
+          .
+        </Typography.Text>
+      )}
+
       {fields.length > 0 && (
         <Typography.Text
           type={status === "ready" ? "success" : "warning"}

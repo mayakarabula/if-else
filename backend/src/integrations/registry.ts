@@ -55,19 +55,23 @@ export function listIntegrationsForApi() {
     name,
     icon,
     color,
-    triggers: triggers?.map(({ id, label, description, fields, kind, outputs }) => ({
+    triggers: triggers?.map(({ id, label, description, fields, kind, outputs, actionPlan, errorCallback }) => ({
       id,
       label,
       description,
       fields,
       kind: kind ?? "condition",
       outputs: outputs ?? [],
+      actionPlan,
+      errorCallback,
     })),
-    actions: actions?.map(({ id, label, description, fields }) => ({
+    actions: actions?.map(({ id, label, description, fields, actionPlan, errorCallback }) => ({
       id,
       label,
       description,
       fields,
+      actionPlan,
+      errorCallback,
     })),
   }));
 }

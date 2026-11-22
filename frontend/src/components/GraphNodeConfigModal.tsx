@@ -117,13 +117,36 @@ export function GraphNodeConfigModal({
     }));
   const argumentItems = useMemo(() => {
     const items = buildArgumentItems(ifClauses, integrations);
-    if (node?.kind === "catch") {
+    if (node?.kind !== "catch") return items;
+
+    const seen = new Set<string>();
+    const errorFields: { path: string; label: string; description?: string }[] = [];
+    for (const integration of integrations) {
+      for (const step of [...(integration.triggers ?? []), ...(integration.actions ?? [])]) {
+        for (const field of step.errorCallback ?? []) {
+          if (seen.has(field.path)) continue;
+          seen.add(field.path);
+          errorFields.push(field);
+        }
+      }
+    }
+
+    if (errorFields.length === 0) {
+      errorFields.push(
+        { path: "message", label: "Error message" },
+        { path: "plan", label: "Action plan" },
+        { path: "integration", label: "Integration id" },
+        { path: "stepLabel", label: "Step label" },
+      );
+    }
+
+    for (const field of errorFields.reverse()) {
       items.unshift({
-        token: "{{error.message}}",
-        short: "error.message",
-        label: "Error message",
-        description: "Message from the failed trigger or action",
-        groupLabel: "Catch",
+        token: `{{error.${field.path}}}`,
+        short: `error.${field.path}`,
+        label: field.label,
+        description: field.description,
+        groupLabel: "Catch · error callback",
       });
     }
     return items;
@@ -363,6 +386,24 @@ export function GraphNodeConfigModal({
                   Change
                 </Button>
               </div>
+
+              {((isTrigger && selectedTrigger?.actionPlan?.length) ||
+                (isAction && selectedAction?.actionPlan?.length)) && (
+                <div>
+                  <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
+                    ACTION PLAN
+                  </Typography.Text>
+                  <ol style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    {(isTrigger ? selectedTrigger?.actionPlan : selectedAction?.actionPlan)?.map((step) => (
+                      <li key={step}>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          {step}
+                        </Typography.Text>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
 
               {isTrigger && selectedTrigger && selectedTrigger.fields.length > 0 && (
                 <ConfigFields

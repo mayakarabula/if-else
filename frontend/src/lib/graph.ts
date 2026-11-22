@@ -306,93 +306,37 @@ export function ruleToGraph(
 }
 
 /**
- * Classify leftover data triggers (when loaded without integrations) as SOURCE nodes.
+ * Classify trigger nodes as condition vs source from integration metadata.
+ * Preserves parent links — SOURCE stays attached to wherever it was added (IF or THEN).
  */
 export function refineGraphSlots(state: GraphState, integrations: Integration[]): GraphState {
   if (integrations.length === 0) return state;
 
-  const byId = new Map(state.nodes.map((n) => [n.id, n]));
-
-  // First pass: mark data triggers as source (except root IF — keep as condition shell).
-  let nodes = state.nodes.map((node) => {
+  const nodes = state.nodes.map((node) => {
     if (!node.integration || !node.trigger) return node;
-    if (!isTriggerKind(node.kind) && node.kind !== "and" && node.kind !== "or" && node.kind !== "if") {
-      return node;
-    }
+    if (!isTriggerKind(node.kind)) return node;
+
     const integration = integrations.find((i) => i.id === node.integration);
     const trigger = integration?.triggers?.find((t) => t.id === node.trigger);
-    if (trigger?.kind !== "data") {
-      if (node.kind === "source") {
-        return {
-          ...node,
-          kind: (node.parentId ? "and" : "if") as GraphNodeKind,
-          slot: "condition" as const,
-        };
+    if (!trigger) return node;
+
+    if (trigger.kind === "data") {
+      // Never convert the root IF into a source node.
+      if (node.kind === "if" && !node.parentId) {
+        return { ...node, slot: "condition" as const };
       }
-      return { ...node, slot: "condition" as const };
+      return { ...node, kind: "source" as const, slot: "source" as const };
     }
-    if (node.kind === "if" && !node.parentId) {
-      // Root IF that is somehow a data trigger — still show as IF but slot source is wrong;
-      // leave as IF condition for gating; rare.
-      return { ...node, slot: "condition" as const };
-    }
-    return { ...node, kind: "source" as const, slot: "source" as const };
-  });
 
-  byId.clear();
-  for (const n of nodes) byId.set(n.id, n);
-
-  // Re-attach sources that sat in the condition chain onto the nearest condition ancestor,
-  // then chain sources under that condition.
-  const sourceNodes = nodes.filter((n) => n.kind === "source");
-  const conditionAttach = new Map<string, string>();
-
-  for (const source of sourceNodes) {
-    let attach = source.parentId;
-    let cursor = source.parentId ? byId.get(source.parentId) : undefined;
-    while (cursor) {
-      if (isConditionKind(cursor.kind)) {
-        attach = cursor.id;
-        break;
-      }
-      if (!cursor.parentId) break;
-      cursor = byId.get(cursor.parentId);
-    }
-    if (attach) conditionAttach.set(source.id, attach);
-  }
-
-  // Group sources by condition attach point, preserve original order.
-  const groups = new Map<string, string[]>();
-  for (const source of sourceNodes) {
-    const attach = conditionAttach.get(source.id);
-    if (!attach) continue;
-    const list = groups.get(attach) ?? [];
-    list.push(source.id);
-    groups.set(attach, list);
-  }
-
-  const newParent = new Map<string, string>();
-  for (const [attach, ids] of groups) {
-    ids.forEach((id, index) => {
-      newParent.set(id, index === 0 ? attach : ids[index - 1]);
-    });
-  }
-
-  // Also fix children of converted sources: then/else/catch that pointed at a former AND
-  // should point at the condition attach if their parent became a source mid-chain.
-  nodes = nodes.map((node) => {
     if (node.kind === "source") {
-      const parentId = newParent.get(node.id);
-      return parentId ? { ...node, parentId } : node;
+      return {
+        ...node,
+        kind: (node.parentId ? "and" : "if") as GraphNodeKind,
+        slot: "condition" as const,
+      };
     }
-    if (!node.parentId) return node;
-    const parent = byId.get(node.parentId);
-    if (parent?.kind === "source" && isActionKind(node.kind)) {
-      // Prefer attaching actions to the condition that owns this source chain.
-      const attach = conditionAttach.get(parent.id) ?? node.parentId;
-      return { ...node, parentId: attach };
-    }
-    return node;
+
+    return { ...node, slot: "condition" as const };
   });
 
   return { ...state, nodes };
