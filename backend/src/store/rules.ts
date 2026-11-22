@@ -13,10 +13,15 @@ export const CONFIG_DIR = path.join(ROOT_DIR, "config");
 export const INTEGRATIONS_CONFIG_PATH = path.join(CONFIG_DIR, "integrations.yaml");
 export const RUNS_PATH = path.join(CONFIG_DIR, "runs.json");
 
+/** Editor graph attachment for data SOURCE clauses (runtime ignores this). */
+export type SourceAttachTo = "if" | "then" | "else" | "catch";
+
 export interface RuleIfClause {
   integration: string;
   trigger: string;
   config: Record<string, unknown>;
+  /** Optional UI hint — keep SOURCE under then/else/catch after reload. */
+  attachTo?: SourceAttachTo;
 }
 
 export interface RuleIfBlock {
