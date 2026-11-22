@@ -9,6 +9,7 @@ import {
   type RuleIfClause,
   type RuleThen,
   type RuleThenClause,
+  type SourceAttachTo,
 } from "./rules";
 
 export type GraphNodeKind = "if" | "and" | "or" | "source" | "then" | "else" | "catch";
@@ -154,6 +155,22 @@ export function conditionMode(nodes: GraphNode[]): ConditionMode {
   return nodes.some((n) => n.kind === "or") ? "any" : "all";
 }
 
+/** Walk ancestors to find which branch a SOURCE should reattach to after save/load. */
+export function sourceAttachTo(node: GraphNode, nodes: GraphNode[]): SourceAttachTo {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  let cursor: string | null = node.parentId;
+  while (cursor) {
+    const parent = byId.get(cursor);
+    if (!parent) break;
+    if (parent.kind === "then" || parent.kind === "else" || parent.kind === "catch") {
+      return parent.kind;
+    }
+    if (isConditionKind(parent.kind)) return "if";
+    cursor = parent.parentId;
+  }
+  return "if";
+}
+
 export function graphToRulePayload(state: GraphState): {
   if: RuleIf;
   then: RuleThen;
@@ -167,11 +184,23 @@ export function graphToRulePayload(state: GraphState): {
     (n) => isSourceKind(n.kind) && isConditionConfigured(n),
   );
 
-  const ifClauses: RuleIfClause[] = [...conditionNodes, ...sourceNodes].map((n) => ({
-    integration: n.integration!,
-    trigger: n.trigger!,
-    config: n.config,
-  }));
+  const ifClauses: RuleIfClause[] = [
+    ...conditionNodes.map((n) => ({
+      integration: n.integration!,
+      trigger: n.trigger!,
+      config: n.config,
+    })),
+    ...sourceNodes.map((n) => {
+      const attachTo = sourceAttachTo(n, state.nodes);
+      const clause: RuleIfClause = {
+        integration: n.integration!,
+        trigger: n.trigger!,
+        config: n.config,
+      };
+      if (attachTo !== "if") clause.attachTo = attachTo;
+      return clause;
+    }),
+  ];
 
   const thenNodes = state.nodes.filter((n) => n.kind === "then" && isActionConfigured(n));
   const elseNodes = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
@@ -259,16 +288,6 @@ export function ruleToGraph(
     lastConditionId = nodes[0].id;
   }
 
-  let sourceParentId = lastConditionId!;
-  for (const clause of sources) {
-    const node = createNode("source", sourceParentId, "source");
-    node.integration = clause.integration;
-    node.trigger = clause.trigger;
-    node.config = clause.config;
-    nodes.push(node);
-    sourceParentId = node.id;
-  }
-
   const attachPoint = lastConditionId!;
 
   thenBlock.all.forEach((clause, index) => {
@@ -298,6 +317,32 @@ export function ruleToGraph(
     node.config = clause.config;
     nodes.push(node);
   });
+
+  // Attach SOURCE nodes after actions so attachTo: then/else/catch can find parents.
+  const placeSources = (clauses: RuleIfClause[], seedParentId: string) => {
+    let parentId = seedParentId;
+    for (const clause of clauses) {
+      const node = createNode("source", parentId, "source");
+      node.integration = clause.integration;
+      node.trigger = clause.trigger;
+      node.config = clause.config;
+      nodes.push(node);
+      parentId = node.id;
+    }
+  };
+
+  const sourcesByAttach = (target: SourceAttachTo) =>
+    sources.filter((clause) => (clause.attachTo ?? "if") === target);
+
+  placeSources(sourcesByAttach("if"), lastConditionId!);
+
+  const firstThen = nodes.find((n) => n.kind === "then");
+  const firstElse = nodes.find((n) => n.kind === "else");
+  const firstCatch = nodes.find((n) => n.kind === "catch");
+
+  placeSources(sourcesByAttach("then"), firstThen?.id ?? lastConditionId!);
+  placeSources(sourcesByAttach("else"), firstElse?.id ?? lastConditionId!);
+  placeSources(sourcesByAttach("catch"), firstCatch?.id ?? lastConditionId!);
 
   return {
     nodes,

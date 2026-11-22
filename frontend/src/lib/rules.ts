@@ -1,7 +1,16 @@
+/** Where a SOURCE clause should reattach in the editor graph after reload. */
+export type SourceAttachTo = "if" | "then" | "else" | "catch";
+
 export interface RuleIfClause {
   integration: string;
   trigger: string;
   config: Record<string, unknown>;
+  /**
+   * Editor-only hint for data SOURCE nodes. Runtime ignores this — sources still
+   * live in `if` so templates resolve — but reload uses it to keep the node under
+   * THEN / ELSE / CATCH instead of always reparenting onto IF.
+   */
+  attachTo?: SourceAttachTo;
 }
 
 export interface RuleIfBlock {
