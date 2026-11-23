@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { enqueueRuleEvaluationAndWait } from "../engine/queue.js";
 import { listIntegrationsForApi, reloadCustomIntegrations } from "../integrations/registry.js";
+import { serviceUpdateCustomIntegrationMeta } from "../tools/rulesService.js";
 import {
   deleteRule,
   loadIntegrationConfig,
@@ -137,7 +138,21 @@ export const integrationsRouter = Router();
 
 integrationsRouter.get("/", async (_req, res) => {
   await reloadCustomIntegrations();
-  res.json(listIntegrationsForApi());
+  const config = await loadIntegrationConfig();
+  // Built-in display overrides live in integrations.yaml (displayName / icon / color).
+  const list = listIntegrationsForApi().map((item) => {
+    const overlay = config[item.id] ?? {};
+    const displayName = String(overlay.displayName ?? "").trim();
+    const icon = String(overlay.icon ?? "").trim();
+    const color = String(overlay.color ?? "").trim();
+    return {
+      ...item,
+      ...(displayName && !item.custom ? { name: displayName } : {}),
+      ...(icon && !item.custom ? { icon } : {}),
+      ...(color && !item.custom ? { color } : {}),
+    };
+  });
+  res.json(list);
 });
 
 integrationsRouter.get("/config", async (_req, res) => {
@@ -149,6 +164,21 @@ integrationsRouter.put("/config", async (req, res) => {
   const config = req.body as Record<string, Record<string, unknown>>;
   await saveIntegrationConfig(config);
   res.json(config);
+});
+
+integrationsRouter.patch("/custom/:id", async (req, res) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const saved = await serviceUpdateCustomIntegrationMeta(req.params.id, {
+      ...(typeof body.name === "string" ? { name: body.name } : {}),
+      ...(typeof body.icon === "string" ? { icon: body.icon } : {}),
+      ...(typeof body.color === "string" ? { color: body.color } : {}),
+      ...(typeof body.description === "string" ? { description: body.description } : {}),
+    });
+    res.json(saved);
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Update failed" });
+  }
 });
 
 export const runsRouter = Router();

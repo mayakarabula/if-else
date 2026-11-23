@@ -7,6 +7,7 @@ import {
   Input,
   List,
   Modal,
+  Select,
   Space,
   Spin,
   Tag,
@@ -15,7 +16,12 @@ import {
 } from "antd";
 import { SearchOutlined, SettingOutlined } from "@ant-design/icons";
 import { api, type ChatStatus, type Integration } from "../api/client";
-import { FieldInput, formLayout, IntegrationIcon } from "../components/ui";
+import {
+  FieldInput,
+  formLayout,
+  IntegrationIcon,
+  INTEGRATION_ICON_OPTIONS,
+} from "../components/ui";
 
 const integrationFields: Record<
   string,
@@ -380,7 +386,6 @@ function IntegrationListItem({
   const conditions = (integration.triggers ?? []).filter((item) => (item.kind ?? "condition") !== "data");
   const sources = (integration.triggers ?? []).filter((item) => item.kind === "data");
   const actions = integration.actions ?? [];
-  const fields = fieldsForIntegration(integration);
   const status =
     integration.id === "agentchat"
       ? chatStatus == null
@@ -408,15 +413,11 @@ function IntegrationListItem({
         padding: "16px 4px",
         alignItems: "flex-start",
       }}
-      actions={
-        fields.length > 0
-          ? [
-              <Button key="configure" type="link" icon={<SettingOutlined />} onClick={onConfigure}>
-                Configure
-              </Button>,
-            ]
-          : undefined
-      }
+      actions={[
+        <Button key="configure" type="link" icon={<SettingOutlined />} onClick={onConfigure}>
+          Configure
+        </Button>,
+      ]}
     >
       <List.Item.Meta
         avatar={<IntegrationIcon integration={integration} size="sm" />}
@@ -476,6 +477,11 @@ export function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [metaDraft, setMetaDraft] = useState<{ name: string; icon: string; color: string }>({
+    name: "",
+    icon: "send",
+    color: "#64748B",
+  });
   const [query, setQuery] = useState("");
   const [chatStatus, setChatStatus] = useState<ChatStatus | null>(null);
 
@@ -551,12 +557,54 @@ export function IntegrationsPage() {
     });
   }, [editing, config.agentchat?.provider]);
 
+  function openConfigure(integration: Integration) {
+    const overlay = config[integration.id] ?? {};
+    setMetaDraft({
+      name: String(
+        integration.custom
+          ? integration.name
+          : overlay.displayName ?? integration.name,
+      ),
+      icon: String(integration.custom ? integration.icon : overlay.icon ?? integration.icon),
+      color: String(integration.custom ? integration.color : overlay.color ?? integration.color),
+    });
+    setEditingId(integration.id);
+  }
+
   async function handleSave() {
+    if (!editing) return;
+    const name = metaDraft.name.trim();
+    if (!name) {
+      message.error("Name is required");
+      return;
+    }
+
     setSaving(true);
     try {
-      await api.saveIntegrationConfig(config);
+      let nextConfig = config;
+      if (editing.custom) {
+        await api.updateCustomIntegrationMeta(editing.id, {
+          name,
+          icon: metaDraft.icon.trim() || "send",
+          color: metaDraft.color.trim() || "#64748B",
+        });
+      } else if (editing.id !== "agentchat") {
+        nextConfig = {
+          ...config,
+          [editing.id]: {
+            ...config[editing.id],
+            displayName: name,
+            icon: metaDraft.icon.trim() || editing.icon,
+            color: metaDraft.color.trim() || editing.color,
+          },
+        };
+        setConfig(nextConfig);
+      }
+
+      await api.saveIntegrationConfig(nextConfig);
       message.success("Integration settings saved.");
       setEditingId(null);
+      refresh();
       window.dispatchEvent(
         new CustomEvent("if-else:data-changed", { detail: { mutations: ["integrations"] } }),
       );
@@ -617,17 +665,17 @@ export function IntegrationsPage() {
               integration={integration}
               config={config}
               chatStatus={chatStatus}
-              onConfigure={() => setEditingId(integration.id)}
+              onConfigure={() => openConfigure(integration)}
             />
           )}
         />
       )}
 
       <Modal
-        title={editing ? `Configure · ${editing.name}` : "Configure"}
+        title={editing ? `Configure · ${metaDraft.name || editing.name}` : "Configure"}
         open={Boolean(editing)}
         onCancel={() => setEditingId(null)}
-        onOk={handleSave}
+        onOk={() => void handleSave()}
         okText="Save"
         confirmLoading={saving}
         destroyOnHidden
@@ -637,7 +685,9 @@ export function IntegrationsPage() {
         {editing && (
           <>
             <Typography.Paragraph type="secondary">
-              {integrationCopy[editing.id] ?? "Update connection settings for this integration."}
+              {editing.custom
+                ? editing.description ?? "Custom HTTP integration — update display and connection settings."
+                : integrationCopy[editing.id] ?? "Update connection settings for this integration."}
             </Typography.Paragraph>
             {editing.id === "agentchat" && chatStatus?.cursorEnvConfigured && (
               <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
@@ -654,6 +704,50 @@ export function IntegrationsPage() {
               style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 24 }}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {editing.id !== "agentchat" && (
+                  <>
+                    <Form.Item label="Name" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={metaDraft.name}
+                        onChange={(e) => setMetaDraft((prev) => ({ ...prev, name: e.target.value }))}
+                        placeholder="Display name"
+                        style={{ maxWidth: formLayout.controlWidth }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="Icon" style={{ marginBottom: 0 }}>
+                      <Select
+                        value={metaDraft.icon}
+                        options={INTEGRATION_ICON_OPTIONS}
+                        onChange={(value) => setMetaDraft((prev) => ({ ...prev, icon: value }))}
+                        style={{ maxWidth: formLayout.controlWidth }}
+                        showSearch
+                        optionFilterProp="label"
+                      />
+                    </Form.Item>
+                    <Form.Item label="Color" style={{ marginBottom: 0 }}>
+                      <Input
+                        value={metaDraft.color}
+                        onChange={(e) => setMetaDraft((prev) => ({ ...prev, color: e.target.value }))}
+                        placeholder="#64748B"
+                        style={{ maxWidth: formLayout.controlWidth }}
+                      />
+                    </Form.Item>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, paddingLeft: formLayout.labelWidth }}>
+                      <IntegrationIcon
+                        integration={{
+                          ...editing,
+                          name: metaDraft.name || editing.name,
+                          icon: metaDraft.icon || editing.icon,
+                          color: metaDraft.color || editing.color,
+                        }}
+                        size="sm"
+                      />
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        Preview
+                      </Typography.Text>
+                    </div>
+                  </>
+                )}
                 {editingFields.map((field) => (
                   <FieldInput
                     key={field.key}

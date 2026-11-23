@@ -171,6 +171,14 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(config),
     }),
+  updateCustomIntegrationMeta: (
+    id: string,
+    patch: { name?: string; icon?: string; color?: string; description?: string },
+  ) =>
+    request<{ id: string; name: string; icon?: string; color?: string }>(
+      `/api/integrations/custom/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify(patch) },
+    ),
   getRuns: () => request<RunLog[]>("/api/runs"),
   getChatStatus: () => request<ChatStatus>("/api/chat/status"),
   listChatSessions: () => request<{ sessions: ChatSessionSummary[] }>("/api/chat/sessions"),
