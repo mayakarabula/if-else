@@ -60,6 +60,26 @@ export interface RuleEvent {
   entityId?: string;
 }
 
+export type RuleFilterOp =
+  | "eq"
+  | "neq"
+  | "contains"
+  | "starts_with"
+  | "ends_with"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "exists"
+  | "not_exists";
+
+/** Lightweight path comparison — useful under EVENT for `event.*` fields. */
+export interface RuleFilter {
+  path: string;
+  op: RuleFilterOp;
+  value?: string;
+}
+
 export interface Rule {
   id: string;
   name: string;
@@ -74,6 +94,8 @@ export interface Rule {
   webhookToken?: string;
   /** Event source details when runTrigger is event. */
   event?: RuleEvent;
+  /** Optional path filters (AND). Evaluated against trigger/event data. */
+  filters?: RuleFilter[];
   if: RuleIf;
   /** Preferred success-path actions. Legacy YAML may use `then` instead. */
   action?: RuleThen;

@@ -7,7 +7,8 @@ Rules are if-this-then-that documents stored as YAML. The UI edits them as a **d
 | Kind | Role |
 | ---- | ---- |
 | **EVENT** | Start node for event-driven rules (HTTP webhook or Home Assistant websocket) |
-| **IF / AND / OR** | Conditions / filters (AND = all, OR = any). Optional under EVENT |
+| **FILTER** | Compare a path (e.g. `event.entityId`) to a value — all filters must pass (AND) |
+| **IF / AND / OR** | Integration conditions (AND = all, OR = any). Optional under EVENT |
 | **SOURCE** | Data for templates (e.g. weather report) — does not gate the rule |
 | **ACTION** | Actions when conditions pass (or when an event fires with no IF) |
 | **ELSE** | Actions when conditions fail |

@@ -287,8 +287,9 @@ export function RuleFormPage() {
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ maxWidth: 640 }}>
         Timer rules start from IF. Event rules start from EVENT (webhook or Home Assistant), with
-        optional IF filters and ACTION / ELSE / CATCH (Catch is optional). Use the gear on a node to
-        configure it.
+        optional FILTER / IF gates and ACTION / ELSE / CATCH (Catch is optional). FILTER compares a
+        path like <code>event.entityId</code> to a value — handy under EVENT. Use the gear on a node
+        to configure it.
       </Typography.Paragraph>
 
       <div

@@ -114,6 +114,7 @@ export async function serviceCreateRule(input: Partial<Rule>) {
     ...runFields,
     if: input.if,
     action,
+    ...(Array.isArray(input.filters) ? { filters: input.filters } : {}),
     ...(input.else ? { else: input.else } : {}),
     ...(input.catch ? { catch: input.catch } : {}),
   };
@@ -134,6 +135,7 @@ export async function serviceUpdateRule(id: string, patch: Partial<Rule>) {
     id: existing.id,
     action,
     then: undefined,
+    filters: Object.prototype.hasOwnProperty.call(patch, "filters") ? patch.filters : existing.filters,
     else: Object.prototype.hasOwnProperty.call(patch, "else") ? patch.else : existing.else,
     catch: Object.prototype.hasOwnProperty.call(patch, "catch") ? patch.catch : existing.catch,
   });

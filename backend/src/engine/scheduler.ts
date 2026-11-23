@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from "uuid";
 import { IntegrationError, toCatchErrorPayload } from "../integrations/errors.js";
 import { getAction, getTrigger } from "../integrations/registry.js";
 import { enqueueRuleEvaluation } from "./queue.js";
+import { evaluateFilters, normalizeFilters } from "./filters.js";
 import { clauseKey, normalizeIf, normalizeThen, ruleHasTimeTrigger, rulePollInterval } from "./normalize.js";
 import {
   appendRun,
@@ -211,6 +212,9 @@ export async function evaluateRule(
     if (options?.eventPayload) {
       result.data.event = options.eventPayload;
     }
+    const filters = normalizeFilters(rule.filters);
+    const filtersPass = evaluateFilters(filters, result.data);
+    const fired = result.fired && filtersPass;
     lastTriggerData = result.data;
 
     ruleStates.set(rule.id, {
@@ -219,7 +223,7 @@ export async function evaluateRule(
       clauses: result.clauses,
     });
 
-    if (!result.fired) {
+    if (!fired) {
       if (elseBlock.all.length > 0) {
         // Still resolve data sources so else templates can use them.
         const clauseStates = { ...result.clauses };
@@ -260,7 +264,7 @@ export async function evaluateRule(
       const run: RunLog = {
         ...base,
         status: "skipped",
-        message: "Trigger condition not met",
+        message: filtersPass ? "Trigger condition not met" : "Filter condition not met",
         triggerData: result.data,
       };
       await appendRun(run);

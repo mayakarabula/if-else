@@ -101,6 +101,7 @@ rulesRouter.post("/", async (req, res) => {
     ...runFields,
     if: body.if!,
     action,
+    ...(Array.isArray(body.filters) ? { filters: body.filters } : {}),
     ...(body.else ? { else: body.else } : {}),
     ...(body.catch ? { catch: body.catch } : {}),
   };
@@ -126,6 +127,7 @@ rulesRouter.put("/:id", async (req, res) => {
     id: existing.id,
     action,
     then: undefined,
+    filters: Object.prototype.hasOwnProperty.call(body, "filters") ? body.filters : existing.filters,
     // Allow clearing else/catch when the client omits them.
     else: body.else,
     catch: body.catch,

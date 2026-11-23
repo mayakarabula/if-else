@@ -5,10 +5,13 @@ import {
   isConditionConfigured,
   isEventConfigured,
   isEventKind,
+  isFilterKind,
+  isFilterNodeConfigured,
   isTriggerKind,
   type GraphNode,
   type GraphState,
 } from "./graph";
+import { filterNeedsValue } from "./filters";
 
 export interface GraphIssue {
   code: string;
@@ -124,6 +127,22 @@ function requiredFieldIssues(node: GraphNode, integrations: Integration[]): Grap
       issues.push({
         code: "unconfigured",
         message: "Configure the Event source",
+      });
+    }
+    return issues;
+  }
+
+  if (isFilterKind(node.kind)) {
+    if (!isFilterNodeConfigured(node)) {
+      const path = String(node.config.path ?? "").trim();
+      const op = String(node.config.op ?? "eq");
+      issues.push({
+        code: "unconfigured",
+        message: !path
+          ? "Pick a path to filter"
+          : filterNeedsValue(op)
+            ? "Enter a filter value"
+            : "Configure the filter",
       });
     }
     return issues;
