@@ -91,6 +91,7 @@ export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNo
     const kinds: GraphNodeKind[] = ["and", "or", "source", "then"];
     const hasElse = _nodes.some((n) => n.kind === "else");
     if (!hasElse) kinds.push("else");
+    // Rule-level catch under IF is still allowed when none exists yet.
     const hasCatch = _nodes.some((n) => n.kind === "catch");
     if (!hasCatch) kinds.push("catch");
     return kinds;
@@ -102,26 +103,29 @@ export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNo
 
   if (isActionKind(node.kind)) {
     // SOURCE from any action node; AND adds another action of the same kind.
-    return ["source", "and"];
+    const kinds: GraphNodeKind[] = ["source", "and"];
+    // CATCH hangs off THEN / ELSE (error path for that branch), not only IF.
+    if (
+      (node.kind === "then" || node.kind === "else") &&
+      !_nodes.some((n) => n.kind === "catch" && n.parentId === node.id)
+    ) {
+      kinds.push("catch");
+    }
+    return kinds;
   }
 
   return [];
 }
 
-/** Attach an empty CATCH under the same parent as THEN when one is missing. */
+/** Attach an empty CATCH under the first THEN when one is missing anywhere. */
 export function ensureCatchForThen(state: GraphState): GraphState {
-  const hasThen = state.nodes.some((n) => n.kind === "then");
-  if (!hasThen) return state;
-  if (state.nodes.some((n) => n.kind === "catch")) return state;
-
   const firstThen = state.nodes.find((n) => n.kind === "then");
-  const root = state.nodes.find((n) => n.kind === "if" && n.parentId === null);
-  const parentId = firstThen?.parentId ?? root?.id;
-  if (!parentId) return state;
+  if (!firstThen) return state;
+  if (state.nodes.some((n) => n.kind === "catch")) return state;
 
   return {
     ...state,
-    nodes: [...state.nodes, createNode("catch", parentId)],
+    nodes: [...state.nodes, createNode("catch", firstThen.id)],
   };
 }
 
@@ -343,9 +347,14 @@ export function ruleToGraph(
     nodes.push(node);
   });
 
+  const firstThenForCatch = nodes.find((n) => n.kind === "then");
+  const catchAttach = firstThenForCatch?.id ?? attachPoint;
+
   catchBlock.all.forEach((clause, index) => {
     const parent =
-      index === 0 ? attachPoint : nodes.filter((n) => n.kind === "catch").at(-1)?.id ?? attachPoint;
+      index === 0
+        ? catchAttach
+        : nodes.filter((n) => n.kind === "catch").at(-1)?.id ?? catchAttach;
     const node = createNode("catch", parent);
     node.integration = clause.integration;
     node.action = clause.action;

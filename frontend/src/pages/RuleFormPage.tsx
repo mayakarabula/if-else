@@ -272,7 +272,7 @@ export function RuleFormPage() {
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ maxWidth: 640 }}>
         Start from an IF node, then grow the flow with AND / OR conditions, SOURCE data, and
-        THEN / ELSE / CATCH actions. Use the gear on a node to configure it.
+        THEN / ELSE / CATCH actions (Catch hangs under Then). Use the gear on a node to configure it.
       </Typography.Paragraph>
 
       <div
