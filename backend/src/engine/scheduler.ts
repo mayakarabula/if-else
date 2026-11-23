@@ -5,8 +5,10 @@ import { enqueueRuleEvaluation } from "./queue.js";
 import { clauseKey, normalizeIf, normalizeThen, ruleHasTimeTrigger, rulePollInterval } from "./normalize.js";
 import {
   appendRun,
+  isEventRunTrigger,
   loadIntegrationConfig,
   listRules,
+  ruleActionBlock,
   type Rule,
   type RuleIfClause,
   type RuleThenClause,
@@ -72,8 +74,9 @@ async function evaluateIfBlock(
   ifBlock: ReturnType<typeof normalizeIf>,
   state: RuleState,
   integrationConfig: Record<string, Record<string, unknown>>,
-  manual?: boolean,
+  options?: { manual?: boolean; emptyIfPasses?: boolean },
 ) {
+  const manual = options?.manual;
   const mergedData: Record<string, unknown> = {};
   const clauseStates = { ...state.clauses };
 
@@ -83,7 +86,8 @@ async function evaluateIfBlock(
   let fired = ifBlock.mode === "all" ? true : false;
 
   if (conditions.length === 0) {
-    fired = false;
+    // Event-driven rules may omit IF filters and run actions on every event.
+    fired = Boolean(options?.emptyIfPasses);
   } else if (ifBlock.mode === "any") {
     fired = false;
     for (const clause of conditions) {
@@ -160,7 +164,10 @@ function errorMessage(err: unknown) {
 }
 
 /** Evaluate a rule immediately (worker). Prefer enqueueing via the queue from the API. */
-export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): Promise<RunLog> {
+export async function evaluateRule(
+  rule: Rule,
+  options?: { manual?: boolean; eventPayload?: Record<string, unknown> },
+): Promise<RunLog> {
   const base: Omit<RunLog, "status" | "message"> = {
     id: uuidv4(),
     ruleId: rule.id,
@@ -175,10 +182,11 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
   }
 
   const ifBlock = normalizeIf(rule.if);
-  const thenBlock = normalizeThen(rule.then);
+  const thenBlock = normalizeThen(ruleActionBlock(rule));
   const elseBlock = normalizeThen(rule.else);
   const catchBlock = normalizeThen(rule.catch);
   const integrationConfig = await loadIntegrationConfig();
+  const emptyIfPasses = isEventRunTrigger(rule.runTrigger) || Boolean(options?.eventPayload);
 
   for (const clause of [...thenBlock.all, ...elseBlock.all, ...catchBlock.all]) {
     if (!getAction(clause.integration, clause.action)) {
@@ -196,7 +204,13 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
 
   try {
     const state = ruleStates.get(rule.id) ?? { lastChecked: 0, clauses: {} };
-    const result = await evaluateIfBlock(ifBlock, state, integrationConfig, options?.manual);
+    const result = await evaluateIfBlock(ifBlock, state, integrationConfig, {
+      manual: options?.manual,
+      emptyIfPasses,
+    });
+    if (options?.eventPayload) {
+      result.data.event = options.eventPayload;
+    }
     lastTriggerData = result.data;
 
     ruleStates.set(rule.id, {
@@ -257,7 +271,7 @@ export async function evaluateRule(rule: Rule, options?: { manual?: boolean }): 
       const run: RunLog = {
         ...base,
         status: "skipped",
-        message: "No then actions configured",
+        message: "No actions configured",
         triggerData: result.data,
       };
       await appendRun(run);
@@ -344,8 +358,8 @@ export async function enqueueDueRules() {
 
   for (const rule of rules) {
     if (!rule.enabled) continue;
-    // Webhook rules only run when their hook URL is called.
-    if (rule.runTrigger === "webhook") continue;
+    // Event rules only run when a webhook / Home Assistant message arrives.
+    if (isEventRunTrigger(rule.runTrigger)) continue;
 
     const state = ruleStates.get(rule.id) ?? { lastChecked: 0, clauses: {} };
     const interval = rulePollInterval(rule.if);

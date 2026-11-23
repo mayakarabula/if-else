@@ -459,7 +459,7 @@ function IntegrationListItem({
               ))}
               {actions.map((item) => (
                 <Tag key={`a-${item.id}`} color="green">
-                  Then · {item.label}
+                  Action · {item.label}
                 </Tag>
               ))}
             </Space>
@@ -631,7 +631,7 @@ export function IntegrationsPage() {
         Integrations
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ maxWidth: 640 }}>
-        Everything you can use in If / Then rules. Secrets are stored in config/integrations.yaml.
+        Everything you can use in If / Action rules. Secrets are stored in config/integrations.yaml.
       </Typography.Paragraph>
 
       <Input

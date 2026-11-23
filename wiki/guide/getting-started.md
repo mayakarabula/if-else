@@ -22,7 +22,7 @@ Rule YAML and integration config are mounted from `./rules` and `./config`.
 
 1. Open the UI and sign in (Google OAuth if configured).
 2. Visit **Integrations** — configure at least one action target (e.g. Telegram) or set `CURSOR_API_KEY` for Agent chat.
-3. Create a rule on **/create**: add an **IF** (e.g. Time → Every `15m`), a **THEN**, and fill the auto-added **CATCH**.
+3. Create a rule on **/create**: add an **IF** (e.g. Time → Every `15m`), a **ACTION**, and fill the auto-added **CATCH**.
 4. Enable the rule and watch **Activity** / Arena for runs.
 
 ## This wiki

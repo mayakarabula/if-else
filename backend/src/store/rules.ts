@@ -14,13 +14,13 @@ export const INTEGRATIONS_CONFIG_PATH = path.join(CONFIG_DIR, "integrations.yaml
 export const RUNS_PATH = path.join(CONFIG_DIR, "runs.json");
 
 /** Editor graph attachment for data SOURCE clauses (runtime ignores this). */
-export type SourceAttachTo = "if" | "then" | "else" | "catch";
+export type SourceAttachTo = "if" | "action" | "else" | "catch" | "then";
 
 export interface RuleIfClause {
   integration: string;
   trigger: string;
   config: Record<string, unknown>;
-  /** Optional UI hint — keep SOURCE under then/else/catch after reload. */
+  /** Optional UI hint — keep SOURCE under action/else/catch after reload. */
   attachTo?: SourceAttachTo;
 }
 
@@ -47,21 +47,38 @@ export interface RuleThenBlock {
 export type RuleThen = RuleThenClause | RuleThenBlock;
 
 /** How an enabled rule is kicked off. Defaults to timer for legacy rules. */
-export type RuleRunTrigger = "timer" | "webhook";
+export type RuleRunTrigger = "timer" | "event";
+
+/** Incoming event source when runTrigger is event. */
+export type RuleEventSource = "webhook" | "homeassistant";
+
+export interface RuleEvent {
+  source: RuleEventSource;
+  /** Home Assistant websocket `event_type` (default `state_changed`). */
+  eventType?: string;
+  /** Optional entity_id filter for Home Assistant events. */
+  entityId?: string;
+}
 
 export interface Rule {
   id: string;
   name: string;
   enabled: boolean;
   /**
-   * When enabled: `timer` polls on an interval; `webhook` only runs when the
-   * hook URL is called. Omitted / unknown → treated as `timer`.
+   * When enabled: `timer` polls on an interval; `event` only runs when an
+   * incoming event matches (HTTP webhook or Home Assistant websocket).
+   * Legacy YAML may still say `webhook` — normalized to `event` on load.
    */
-  runTrigger?: RuleRunTrigger;
-  /** Secret path segment for `/api/hooks/:token` when runTrigger is webhook. */
+  runTrigger?: RuleRunTrigger | "webhook";
+  /** Secret path segment for `/api/hooks/:token` when event.source is webhook. */
   webhookToken?: string;
+  /** Event source details when runTrigger is event. */
+  event?: RuleEvent;
   if: RuleIf;
-  then: RuleThen;
+  /** Preferred success-path actions. Legacy YAML may use `then` instead. */
+  action?: RuleThen;
+  /** @deprecated Prefer `action`. Kept for dual-read of older YAML. */
+  then?: RuleThen;
   /** Actions to run when the If conditions do not pass. */
   else?: RuleThen;
   /** Actions to run when a trigger or action throws during execution. */
@@ -70,9 +87,43 @@ export interface Rule {
   updatedAt?: string;
 }
 
+export function isEventRunTrigger(value: string | undefined | null): boolean {
+  return value === "event" || value === "webhook";
+}
+
+/** Prefer `action`, fall back to legacy `then`. */
+export function ruleActionBlock(rule: Pick<Rule, "action" | "then">): RuleThen | undefined {
+  return rule.action ?? rule.then;
+}
+
+export function normalizeSourceAttachTo(value: string | undefined): SourceAttachTo {
+  if (value === "then") return "action";
+  if (value === "action" || value === "else" || value === "catch" || value === "if") return value;
+  return "if";
+}
+
 export function ruleRunTrigger(rule: Pick<Rule, "enabled" | "runTrigger">): RuleRunTrigger | "off" {
   if (!rule.enabled) return "off";
-  return rule.runTrigger === "webhook" ? "webhook" : "timer";
+  return isEventRunTrigger(rule.runTrigger) ? "event" : "timer";
+}
+
+export function normalizeLoadedRule(raw: Rule): Rule {
+  const runTrigger: RuleRunTrigger = isEventRunTrigger(raw.runTrigger) ? "event" : "timer";
+  const action = ruleActionBlock(raw);
+  const event: RuleEvent | undefined =
+    raw.event ??
+    (runTrigger === "event"
+      ? { source: "webhook" }
+      : undefined);
+
+  return {
+    ...raw,
+    runTrigger,
+    ...(action ? { action } : {}),
+    ...(event ? { event } : {}),
+    // Drop legacy key from in-memory representation after merge.
+    then: undefined,
+  };
 }
 
 export interface RunLog {
@@ -133,19 +184,22 @@ export async function loadRule(id: string): Promise<Rule | null> {
     }
   }
 
-  return yaml.load(raw) as Rule;
+  return normalizeLoadedRule(yaml.load(raw) as Rule);
 }
 
 export async function saveRule(rule: Rule) {
   await ensureDirs();
   const now = new Date().toISOString();
   const existing = await loadRule(rule.id);
+  const normalized = normalizeLoadedRule(rule);
   const toSave: Rule = {
-    ...rule,
+    ...normalized,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
-  await writeFile(path.join(RULES_DIR, `${rule.id}.yaml`), yaml.dump(toSave), "utf8");
+  // Persist modern keys only.
+  const { then: _legacyThen, ...persisted } = toSave;
+  await writeFile(path.join(RULES_DIR, `${rule.id}.yaml`), yaml.dump(persisted), "utf8");
   return toSave;
 }
 

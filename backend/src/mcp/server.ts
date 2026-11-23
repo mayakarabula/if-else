@@ -40,18 +40,26 @@ const ruleBodySchema = {
   name: z.string().optional().describe("Display name for the rule"),
   enabled: z.boolean().optional().describe("Whether the rule is active"),
   runTrigger: z
-    .enum(["timer", "webhook"])
+    .enum(["timer", "event", "webhook"])
     .optional()
-    .describe("How an enabled rule is kicked off"),
+    .describe("How an enabled rule is kicked off (webhook is a legacy alias for event)"),
   webhookToken: z.string().optional().describe("Optional webhook path token"),
+  event: z
+    .unknown()
+    .optional()
+    .describe("Event source: { source: webhook|homeassistant, eventType?, entityId? }"),
   if: z
     .unknown()
     .optional()
     .describe("If block: clause object, or { all|any: clauses[], pollInterval? }"),
+  action: z
+    .unknown()
+    .optional()
+    .describe("Action block: action clause or { all: clauses[] }"),
   then: z
     .unknown()
     .optional()
-    .describe("Then block: action clause or { all: clauses[] }"),
+    .describe("Legacy alias for action"),
   else: z.unknown().optional().describe("Optional else actions"),
   catch: z.unknown().optional().describe("Optional catch actions"),
   yaml: z
@@ -68,11 +76,13 @@ function bodyFromArgs(args: Record<string, unknown>): Partial<Rule> {
   const body: Partial<Rule> = {};
   if (typeof args.name === "string") body.name = args.name;
   if (typeof args.enabled === "boolean") body.enabled = args.enabled;
-  if (args.runTrigger === "timer" || args.runTrigger === "webhook") {
-    body.runTrigger = args.runTrigger;
+  if (args.runTrigger === "timer" || args.runTrigger === "event" || args.runTrigger === "webhook") {
+    body.runTrigger = args.runTrigger === "webhook" ? "event" : args.runTrigger;
   }
   if (typeof args.webhookToken === "string") body.webhookToken = args.webhookToken;
+  if (args.event !== undefined) body.event = args.event as Rule["event"];
   if (args.if !== undefined) body.if = args.if as Rule["if"];
+  if (args.action !== undefined) body.action = args.action as Rule["action"];
   if (args.then !== undefined) body.then = args.then as Rule["then"];
   if (args.else !== undefined) body.else = args.else as Rule["else"];
   if (args.catch !== undefined) body.catch = args.catch as Rule["catch"];

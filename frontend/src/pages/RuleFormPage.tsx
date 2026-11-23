@@ -20,11 +20,15 @@ import { formLayout } from "../components/ui";
 import {
   addChild,
   createEmptyGraph,
+  ensureEventRoot,
+  eventConfigFromGraph,
+  eventSourceFromNode,
   graphToRulePayload,
   graphValidation,
   refineGraphSlots,
   removeNode,
   ruleToGraph,
+  stripEventRoot,
   updateNode,
   type GraphNode,
   type GraphNodeKind,
@@ -32,7 +36,7 @@ import {
 } from "../lib/graph";
 import { validateGraphSetup } from "../lib/graphIssues";
 
-type RunMode = "off" | RuleRunTrigger;
+type RunMode = "off" | "timer" | "event";
 
 function newWebhookToken() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -85,7 +89,7 @@ export function RuleFormPage() {
     setIntegrations(integrationsData);
     setName(rule.name);
     if (!rule.enabled) setRunMode("off");
-    else setRunMode(rule.runTrigger === "webhook" ? "webhook" : "timer");
+    else setRunMode(rule.runTrigger === "event" || rule.runTrigger === "webhook" ? "event" : "timer");
     setWebhookToken(rule.webhookToken?.trim() || newWebhookToken());
     const next = refineGraphSlots(ruleToGraph(rule, integrationsData), integrationsData);
     setGraph(next);
@@ -158,7 +162,7 @@ export function RuleFormPage() {
   function handleAddChild(parentId: string, kind: GraphNodeKind) {
     setGraph((current) => {
       const next = addChild(current, parentId, kind);
-      // Prefer selecting the requested kind (THEN may also auto-add CATCH).
+      // Prefer selecting the requested kind (ACTION may also auto-add CATCH).
       const added =
         next.nodes.find(
           (n) => n.kind === kind && !current.nodes.some((c) => c.id === n.id),
@@ -182,7 +186,11 @@ export function RuleFormPage() {
     setSelectedId((current) => {
       if (current !== nodeId) return current;
       setConfigOpen(false);
-      return graph.nodes.find((n) => n.kind === "if")?.id ?? null;
+      return (
+        graph.nodes.find((n) => n.kind === "event")?.id ??
+        graph.nodes.find((n) => n.kind === "if")?.id ??
+        null
+      );
     });
   }
 
@@ -223,13 +231,21 @@ export function RuleFormPage() {
 
     const flow = graphToRulePayload(graph);
     const token = webhookToken.trim() || newWebhookToken();
-    if (runMode === "webhook" && !webhookToken.trim()) setWebhookToken(token);
-    const runTrigger: RuleRunTrigger = runMode === "webhook" ? "webhook" : "timer";
+    const event = eventConfigFromGraph(graph) ?? { source: "webhook" as const };
+    if (runMode === "event" && event.source === "webhook" && !webhookToken.trim()) {
+      setWebhookToken(token);
+    }
+    const runTrigger: RuleRunTrigger = runMode === "event" ? "event" : "timer";
     const payload = {
       name: name.trim(),
       enabled: runMode !== "off",
       runTrigger,
-      ...(runMode === "webhook" ? { webhookToken: token } : {}),
+      ...(runMode === "event"
+        ? {
+            event,
+            ...(event.source === "webhook" ? { webhookToken: token } : {}),
+          }
+        : {}),
       ...flow,
     };
 
@@ -271,8 +287,9 @@ export function RuleFormPage() {
         {isEditing ? "Edit rule" : "Create rule"}
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ maxWidth: 640 }}>
-        Start from an IF node, then grow the flow with AND / OR conditions, SOURCE data, and
-        THEN / ELSE / CATCH actions (Catch hangs under Then). Use the gear on a node to configure it.
+        Timer rules start from IF. Event rules start from EVENT (webhook or Home Assistant), with
+        optional IF filters and ACTION / ELSE / CATCH. Catch hangs under Action. Use the gear on a
+        node to configure it.
       </Typography.Paragraph>
 
       <div
@@ -317,8 +334,9 @@ export function RuleFormPage() {
             <Typography.Text strong>Run when</Typography.Text>
             <div>
               <Typography.Text type="secondary">
-                Choose a timer, a webhook URL, or keep the rule paused. Timer cadence comes from a
-                Time → Every If condition (default 15m), or every 30s when using Every day at.
+                Choose a timer, an event (HTTP webhook or Home Assistant message), or keep the rule
+                paused. Timer cadence comes from a Time → Every If condition (default 15m), or every
+                30s when using Every day at.
               </Typography.Text>
             </div>
           </div>
@@ -328,8 +346,16 @@ export function RuleFormPage() {
             onChange={(e) => {
               const next = e.target.value as RunMode;
               setRunMode(next);
-              if (next === "webhook" && !webhookToken.trim()) {
-                setWebhookToken(newWebhookToken());
+              if (next === "event") {
+                if (!webhookToken.trim()) setWebhookToken(newWebhookToken());
+                setGraph((current) => {
+                  const withEvent = ensureEventRoot(current);
+                  const eventNode = withEvent.nodes.find((n) => n.kind === "event");
+                  if (eventNode) setSelectedId(eventNode.id);
+                  return withEvent;
+                });
+              } else if (next === "timer" || next === "off") {
+                setGraph((current) => stripEventRoot(current));
               }
             }}
             optionType="button"
@@ -337,14 +363,16 @@ export function RuleFormPage() {
             options={[
               { label: "Paused", value: "off" },
               { label: "On a timer", value: "timer" },
-              { label: "Webhook URL", value: "webhook" },
+              { label: "Event", value: "event" },
             ]}
           />
 
-          {runMode === "webhook" && (
+          {runMode === "event" &&
+            eventSourceFromNode(graph.nodes.find((n) => n.kind === "event")) === "webhook" && (
             <div style={{ display: "grid", gap: 8 }}>
               <Typography.Text type="secondary">
-                Call this URL (GET or POST) to evaluate the rule. Anyone with the link can trigger it.
+                HTTP webhook URL for this event (GET or POST). Configure the Event node to switch to
+                Home Assistant websocket messages. Payload is available as {"{{event.*}}"}.
               </Typography.Text>
               <Space.Compact style={{ width: "100%", maxWidth: 520 }}>
                 <Input
@@ -357,7 +385,7 @@ export function RuleFormPage() {
                     const url = `${window.location.origin}/api/hooks/${webhookToken}`;
                     try {
                       await navigator.clipboard.writeText(url);
-                      message.success("Webhook URL copied");
+                      message.success("Event webhook URL copied");
                     } catch {
                       message.error("Could not copy URL");
                     }
@@ -392,6 +420,11 @@ export function RuleFormPage() {
         node={selected}
         graph={graph}
         integrations={integrations}
+        webhookUrl={
+          runMode === "event"
+            ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/hooks/${webhookToken}`
+            : undefined
+        }
         onClose={handleConfigClose}
         onChange={patchSelected}
       />

@@ -5,38 +5,68 @@ import { listIntegrationsForApi, reloadCustomIntegrations } from "../integration
 import { serviceUpdateCustomIntegrationMeta } from "../tools/rulesService.js";
 import {
   deleteRule,
+  isEventRunTrigger,
   loadIntegrationConfig,
   loadRule,
   loadRuns,
   listRules,
+  ruleActionBlock,
   saveIntegrationConfig,
   saveRule,
   type Rule,
+  type RuleEvent,
   type RuleRunTrigger,
+  type RuleThen,
 } from "../store/rules.js";
 
-function normalizeRunFields(body: Partial<Rule>, existing?: Rule): Pick<Rule, "enabled" | "runTrigger" | "webhookToken"> {
-  const runTrigger: RuleRunTrigger =
-    body.runTrigger === "webhook"
-      ? "webhook"
-      : body.runTrigger === "timer"
-        ? "timer"
-        : existing?.runTrigger === "webhook"
-          ? "webhook"
-          : "timer";
+function normalizeEvent(
+  body: Partial<Rule>,
+  existing: Rule | undefined,
+  runTrigger: RuleRunTrigger | undefined,
+): RuleEvent | undefined {
+  if (runTrigger !== "event") return undefined;
+  const raw = body.event ?? existing?.event;
+  const source = raw?.source === "homeassistant" ? "homeassistant" : "webhook";
+  if (source === "homeassistant") {
+    return {
+      source,
+      eventType: String(raw?.eventType ?? "state_changed").trim() || "state_changed",
+      ...(raw?.entityId?.trim() ? { entityId: raw.entityId.trim() } : {}),
+    };
+  }
+  return { source: "webhook" };
+}
+
+function normalizeRunFields(
+  body: Partial<Rule>,
+  existing?: Rule,
+): Pick<Rule, "enabled" | "runTrigger" | "webhookToken" | "event"> {
+  const runTrigger: RuleRunTrigger = isEventRunTrigger(body.runTrigger)
+    ? "event"
+    : body.runTrigger === "timer"
+      ? "timer"
+      : isEventRunTrigger(existing?.runTrigger)
+        ? "event"
+        : "timer";
 
   const enabled = body.enabled ?? existing?.enabled ?? true;
   let webhookToken = body.webhookToken ?? existing?.webhookToken;
+  const event = normalizeEvent(body, existing, enabled ? runTrigger : undefined);
 
-  if (enabled && runTrigger === "webhook") {
+  if (enabled && runTrigger === "event" && (event?.source ?? "webhook") === "webhook") {
     webhookToken = webhookToken?.trim() || uuidv4().replace(/-/g, "");
   }
 
   return {
     enabled,
-    runTrigger: enabled ? runTrigger : existing?.runTrigger === "webhook" ? "webhook" : "timer",
+    runTrigger: enabled ? runTrigger : isEventRunTrigger(existing?.runTrigger) ? "event" : "timer",
     ...(webhookToken ? { webhookToken } : {}),
+    ...(event ? { event } : {}),
   };
+}
+
+function resolveActionBlock(body: Partial<Rule>, existing?: Rule): RuleThen | undefined {
+  return ruleActionBlock(body) ?? (existing ? ruleActionBlock(existing) : undefined);
 }
 
 export const rulesRouter = Router();
@@ -59,13 +89,18 @@ rulesRouter.post("/", async (req, res) => {
   const body = req.body as Partial<Rule>;
   const id = body.id ?? uuidv4().slice(0, 8);
   const runFields = normalizeRunFields(body);
+  const action = resolveActionBlock(body);
+  if (!action) {
+    res.status(400).json({ error: "Rule requires an `action` (or legacy `then`) block" });
+    return;
+  }
 
   const rule: Rule = {
     id,
     name: body.name ?? "Untitled rule",
     ...runFields,
     if: body.if!,
-    then: body.then!,
+    action,
     ...(body.else ? { else: body.else } : {}),
     ...(body.catch ? { catch: body.catch } : {}),
   };
@@ -83,11 +118,14 @@ rulesRouter.put("/:id", async (req, res) => {
 
   const body = req.body as Partial<Rule>;
   const runFields = normalizeRunFields(body, existing);
+  const action = resolveActionBlock(body, existing);
   const saved = await saveRule({
     ...existing,
     ...body,
     ...runFields,
     id: existing.id,
+    action,
+    then: undefined,
     // Allow clearing else/catch when the client omits them.
     else: body.else,
     catch: body.catch,
@@ -188,7 +226,7 @@ runsRouter.get("/", async (_req, res) => {
   res.json(runs);
 });
 
-/** Public webhook trigger — no session auth; gated by per-rule secret token. */
+/** Public event webhook — no session auth; gated by per-rule secret token. */
 export const hooksRouter = Router();
 
 async function handleHook(req: Request, res: Response) {
@@ -200,16 +238,33 @@ async function handleHook(req: Request, res: Response) {
 
   const rules = await listRules();
   const rule = rules.find(
-    (item) => item.enabled && item.runTrigger === "webhook" && item.webhookToken === token,
+    (item) =>
+      item.enabled &&
+      isEventRunTrigger(item.runTrigger) &&
+      (item.event?.source ?? "webhook") === "webhook" &&
+      item.webhookToken === token,
   );
 
   if (!rule) {
-    res.status(404).json({ error: "Webhook not found" });
+    res.status(404).json({ error: "Event webhook not found" });
     return;
   }
 
+  const payload =
+    req.method === "GET"
+      ? { query: req.query }
+      : { body: req.body, query: req.query };
+
   try {
-    const run = await enqueueRuleEvaluationAndWait({ ruleId: rule.id, manual: true });
+    const run = await enqueueRuleEvaluationAndWait({
+      ruleId: rule.id,
+      manual: true,
+      eventPayload: {
+        source: "webhook",
+        method: req.method,
+        ...payload,
+      },
+    });
     res.json({ ok: true, ruleId: rule.id, run });
   } catch (err) {
     res.status(500).json({

@@ -80,7 +80,7 @@ export function IntegrationIcon({
 export function FlowArrow() {
   return (
     <Typography.Text type="secondary" style={{ paddingInline: 8, fontSize: 12, textTransform: "uppercase" }}>
-      then
+      action
     </Typography.Text>
   );
 }

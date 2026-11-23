@@ -4,6 +4,8 @@ import type { RunLog } from "../store/rules.js";
 export interface EvaluateRuleJob {
   ruleId: string;
   manual?: boolean;
+  /** Incoming event payload (webhook body / HA websocket message). */
+  eventPayload?: Record<string, unknown>;
 }
 
 export const EVALUATE_RULE_QUEUE = "evaluate-rule";

@@ -2,7 +2,7 @@
 
 Simple if-this-then-that automations with a React UI and Node backend.
 
-Rule setup uses a **d3 flow graph**: start from an **IF** node, then branch with **AND** / **OR** conditions and **THEN** / **ELSE** / **CATCH** actions.
+Rule setup uses a **d3 flow graph**: timer rules start from **IF**; event rules start from **EVENT** (webhook or Home Assistant), with optional IF filters and **ACTION** / **ELSE** / **CATCH**.
 
 **Wiki** (VitePress): [`wiki/`](./wiki) — run `npm run wiki` → http://localhost:5174
 
@@ -47,7 +47,7 @@ Operates directly on `rules/` + `config/` (set `DATA_ROOT` if those live elsewhe
 npm run cli -- list
 npm run cli -- get <id>
 npm run cli -- create --file ./path/to/rule.yaml
-npm run cli -- create --body '{"name":"Demo","enabled":true,"if":{"integration":"time","trigger":"every","config":{"interval":"15m"}},"then":{"integration":"telegram","action":"send_message","config":{"text":"hi"}}}'
+npm run cli -- create --body '{"name":"Demo","enabled":true,"if":{"integration":"time","trigger":"every","config":{"interval":"15m"}},"action":{"integration":"telegram","action":"send_message","config":{"text":"hi"}}}'
 npm run cli -- update <id> --file ./path/to/rule.yaml
 npm run cli -- get <id> --json
 npm run cli -- enable <id>
@@ -130,7 +130,7 @@ Configure under **Integrations → Cursor Agent** with a Cursor API key (or set 
 
 ### Shell script
 
-Configure optional defaults under **Integrations → Shell script** (working directory, shell, timeout). THEN action **Run script** and SOURCE **Capture script output** accept either **inline code** or a **file path** (templates like `{{weather.report}}` work in the script body/path).
+Configure optional defaults under **Integrations → Shell script** (working directory, shell, timeout). ACTION **Run script** and SOURCE **Capture script output** accept either **inline code** or a **file path** (templates like `{{weather.report}}` work in the script body/path).
 
 ## Local development (without full Docker)
 

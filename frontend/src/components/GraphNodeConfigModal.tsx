@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Button, Empty, Input, Modal, Space, Typography } from "antd";
+import { Button, Empty, Input, Modal, Radio, Space, Typography } from "antd";
 import { EditOutlined } from "@ant-design/icons";
 import type { ActionMeta, Integration, TriggerMeta } from "../api/client";
 import { ConfigFields } from "./ClauseEditors";
@@ -7,6 +7,8 @@ import { IntegrationIcon } from "./ui";
 import { buildArgumentItems } from "./AvailableVariables";
 import {
   isActionKind,
+  isEventConfigured,
+  isEventKind,
   isSourceKind,
   isTriggerKind,
   type GraphNode,
@@ -86,6 +88,7 @@ export function GraphNodeConfigModal({
   node,
   graph,
   integrations,
+  webhookUrl,
   onClose,
   onChange,
 }: {
@@ -93,12 +96,15 @@ export function GraphNodeConfigModal({
   node: GraphNode | null;
   graph: GraphState;
   integrations: Integration[];
+  /** Shown when configuring an EVENT with HTTP webhook source. */
+  webhookUrl?: string;
   onClose: () => void;
   onChange: (patch: Partial<GraphNode>) => void;
 }) {
   const [search, setSearch] = useState("");
   const [picking, setPicking] = useState(false);
 
+  const isEvent = node ? isEventKind(node.kind) : false;
   const isAction = node ? isActionKind(node.kind) : false;
   const isSource = node ? isSourceKind(node.kind) || node.slot === "source" : false;
   const isTrigger = node ? isTriggerKind(node.kind) : false;
@@ -106,9 +112,11 @@ export function GraphNodeConfigModal({
   const selectedIntegration = integrations.find((item) => item.id === node?.integration);
   const selectedTrigger = selectedIntegration?.triggers?.find((item) => item.id === node?.trigger);
   const selectedAction = selectedIntegration?.actions?.find((item) => item.id === node?.action);
-  const hasSelection = isTrigger
-    ? Boolean(node?.integration && node?.trigger)
-    : Boolean(node?.integration && node?.action);
+  const hasSelection = isEvent
+    ? Boolean(node && isEventConfigured(node))
+    : isTrigger
+      ? Boolean(node?.integration && node?.trigger)
+      : Boolean(node?.integration && node?.action);
 
   const ifClauses = graph.nodes
     .filter((n) => isTriggerKind(n.kind))
@@ -197,11 +205,12 @@ export function GraphNodeConfigModal({
       });
   }, [integrations, search, isTrigger, isSource]);
 
-  const showPicker = !hasSelection || picking;
+  const showPicker = !isEvent && (!hasSelection || picking);
   const kindLabel = node?.kind.toUpperCase() ?? "Node";
+  const eventSource = String(node?.config.source ?? "webhook");
 
   const overview =
-    hasSelection && node
+    hasSelection && node && !isEvent
       ? isTrigger && node.integration && node.trigger
         ? formatClauseOverview(
             integrations,
@@ -212,7 +221,7 @@ export function GraphNodeConfigModal({
           ? formatClauseOverview(
               integrations,
               { integration: node.integration, action: node.action, config: node.config },
-              "then",
+              "action",
             )
           : ""
       : "";
@@ -244,22 +253,29 @@ export function GraphNodeConfigModal({
     setSearch("");
   }
 
+  function patchEventConfig(patch: Record<string, unknown>) {
+    if (!node) return;
+    onChange({ config: { ...node.config, ...patch } });
+  }
+
   const help =
     !node
       ? ""
-      : isSource
-        ? "SOURCE — optional data (like weather) you can insert into Then / Else / Catch fields."
-        : node.kind === "or"
-          ? "OR — alternative condition. If any OR branch passes, the rule continues."
-          : node.kind === "and"
-            ? "AND — this condition must also pass."
-            : node.kind === "else"
-              ? "ELSE — runs when the If conditions do not pass."
-              : node.kind === "catch"
-                ? "CATCH — runs when a trigger or action throws. Use {{error.message}} in templates."
-                : node.kind === "then"
-                  ? "THEN — runs when the If conditions pass."
-                  : "IF — the starting condition for this automation.";
+      : isEvent
+        ? "EVENT — when this rule starts (webhook or Home Assistant)."
+        : isSource
+          ? "SOURCE — optional data (like weather) you can insert into Action / Else / Catch fields."
+          : node.kind === "or"
+            ? "OR — alternative condition. If any OR branch passes, the rule continues."
+            : node.kind === "and"
+              ? "AND — this condition must also pass."
+              : node.kind === "else"
+                ? "ELSE — runs when the If conditions do not pass."
+                : node.kind === "catch"
+                  ? "CATCH — runs when a trigger or action throws. Use {{error.message}} in templates."
+                  : node.kind === "action"
+                    ? "ACTION — runs when the If conditions pass."
+                    : "IF — the starting condition for this automation.";
 
   return (
     <Modal
@@ -281,7 +297,7 @@ export function GraphNodeConfigModal({
       width="min(680px, calc(100vw - 24px))"
       styles={{ body: { maxHeight: "min(70vh, 640px)", overflowY: "auto" } }}
       afterOpenChange={(visible) => {
-        if (visible && node && !hasSelection) {
+        if (visible && node && !isEvent && !hasSelection) {
           setPicking(true);
         }
       }}
@@ -290,7 +306,70 @@ export function GraphNodeConfigModal({
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <Typography.Text type="secondary">{help}</Typography.Text>
 
-          {showPicker ? (
+          {isEvent ? (
+            <>
+              <div>
+                <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
+                  SOURCE
+                </Typography.Text>
+                <div style={{ marginTop: 8 }}>
+                  <Radio.Group
+                    value={eventSource === "homeassistant" ? "homeassistant" : "webhook"}
+                    onChange={(e) => {
+                      const source = e.target.value as "webhook" | "homeassistant";
+                      patchEventConfig(
+                        source === "homeassistant"
+                          ? {
+                              source,
+                              eventType: String(node.config.eventType ?? "").trim() || "state_changed",
+                              entityId: String(node.config.entityId ?? ""),
+                            }
+                          : { source },
+                      );
+                    }}
+                  >
+                    <Space direction="vertical">
+                      <Radio value="webhook">HTTP webhook</Radio>
+                      <Radio value="homeassistant">Home Assistant</Radio>
+                    </Space>
+                  </Radio.Group>
+                </div>
+              </div>
+
+              {eventSource === "homeassistant" ? (
+                <Space direction="vertical" size={12} style={{ width: "100%" }}>
+                  <div>
+                    <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
+                      EVENT TYPE
+                    </Typography.Text>
+                    <Input
+                      style={{ marginTop: 8 }}
+                      value={String(node.config.eventType ?? "state_changed")}
+                      placeholder="state_changed"
+                      onChange={(e) => patchEventConfig({ eventType: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
+                      ENTITY ID
+                    </Typography.Text>
+                    <Input
+                      style={{ marginTop: 8 }}
+                      value={String(node.config.entityId ?? "")}
+                      placeholder="optional, e.g. light.kitchen"
+                      onChange={(e) => patchEventConfig({ entityId: e.target.value })}
+                    />
+                  </div>
+                </Space>
+              ) : (
+                <Typography.Text type="secondary">
+                  {webhookUrl
+                    ? `HTTP webhook — ${webhookUrl}`
+                    : "HTTP webhook — URL is shown under Run when"}
+                </Typography.Text>
+              )}
+            </>
+          ) : showPicker ? (
             <>
               <Input.Search
                 allowClear

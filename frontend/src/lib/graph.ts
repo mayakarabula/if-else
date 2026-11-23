@@ -1,6 +1,7 @@
-import type { Integration } from "../api/client";
+import type { Integration, RuleEvent, RuleEventSource } from "../api/client";
 import {
   normalizeIf,
+  normalizeSourceAttachTo,
   normalizeThen,
   serializeIf,
   serializeThen,
@@ -12,7 +13,15 @@ import {
   type SourceAttachTo,
 } from "./rules";
 
-export type GraphNodeKind = "if" | "and" | "or" | "source" | "then" | "else" | "catch";
+export type GraphNodeKind =
+  | "event"
+  | "if"
+  | "and"
+  | "or"
+  | "source"
+  | "action"
+  | "else"
+  | "catch";
 
 export interface GraphNode {
   id: string;
@@ -21,7 +30,7 @@ export interface GraphNode {
   /** Condition / source nodes (if / and / or / source) */
   integration: string | null;
   trigger: string | null;
-  /** Action nodes (then / else / catch) */
+  /** Action nodes (action / else / catch) */
   action: string | null;
   config: Record<string, unknown>;
   /** condition gates; source supplies template data */
@@ -45,7 +54,7 @@ export function createNode(
     integration: null,
     trigger: null,
     action: null,
-    config: {},
+    config: kind === "event" ? { source: "webhook" } : {},
     slot,
   };
 }
@@ -55,6 +64,10 @@ export function createEmptyGraph(): GraphState {
     nodes: [createNode("if", null, "condition")],
     pollInterval: "15m",
   };
+}
+
+export function isEventKind(kind: GraphNodeKind): boolean {
+  return kind === "event";
 }
 
 export function isConditionKind(kind: GraphNodeKind): boolean {
@@ -71,7 +84,7 @@ export function isTriggerKind(kind: GraphNodeKind): boolean {
 }
 
 export function isActionKind(kind: GraphNodeKind): boolean {
-  return kind === "then" || kind === "else" || kind === "catch";
+  return kind === "action" || kind === "else" || kind === "catch";
 }
 
 export function isConditionConfigured(node: GraphNode): boolean {
@@ -82,16 +95,113 @@ export function isActionConfigured(node: GraphNode): boolean {
   return Boolean(node.integration && node.action);
 }
 
+export function isEventConfigured(node: GraphNode): boolean {
+  const source = String(node.config.source ?? "");
+  return source === "webhook" || source === "homeassistant";
+}
+
 export function childrenOf(nodes: GraphNode[], parentId: string): GraphNode[] {
   return nodes.filter((node) => node.parentId === parentId);
 }
 
+export function graphRoot(nodes: GraphNode[]): GraphNode | undefined {
+  return (
+    nodes.find((n) => n.kind === "event" && n.parentId === null) ??
+    nodes.find((n) => n.kind === "if" && n.parentId === null) ??
+    nodes.find((n) => n.parentId === null)
+  );
+}
+
+export function eventSourceFromNode(node: GraphNode | undefined): RuleEventSource {
+  const source = String(node?.config.source ?? "webhook");
+  return source === "homeassistant" ? "homeassistant" : "webhook";
+}
+
+export function eventConfigFromGraph(state: GraphState): RuleEvent | undefined {
+  const eventNode = state.nodes.find((n) => n.kind === "event");
+  if (!eventNode) return undefined;
+  const source = eventSourceFromNode(eventNode);
+  const eventType = String(eventNode.config.eventType ?? "").trim();
+  const entityId = String(eventNode.config.entityId ?? "").trim();
+  return {
+    source,
+    ...(source === "homeassistant"
+      ? {
+          eventType: eventType || "state_changed",
+          ...(entityId ? { entityId } : {}),
+        }
+      : {}),
+  };
+}
+
+/** Ensure an EVENT root exists (reparents a configured IF underneath; drops empty IF). */
+export function ensureEventRoot(state: GraphState): GraphState {
+  const existing = state.nodes.find((n) => n.kind === "event" && n.parentId === null);
+  if (existing) return state;
+
+  const event = createNode("event", null);
+  const previousRoot = state.nodes.find((n) => n.parentId === null);
+
+  // Empty IF placeholder isn't useful under EVENT — user can add a filter later.
+  if (
+    previousRoot &&
+    previousRoot.kind === "if" &&
+    !isConditionConfigured(previousRoot) &&
+    childrenOf(state.nodes, previousRoot.id).length === 0
+  ) {
+    return { ...state, nodes: [event] };
+  }
+
+  const nodes = state.nodes.map((n) =>
+    previousRoot && n.id === previousRoot.id ? { ...n, parentId: event.id } : n,
+  );
+  return { ...state, nodes: [event, ...nodes] };
+}
+
+/** Remove EVENT root and promote its children to top-level (timer mode). */
+export function stripEventRoot(state: GraphState): GraphState {
+  const event = state.nodes.find((n) => n.kind === "event" && n.parentId === null);
+  if (!event) return state;
+
+  const kids = childrenOf(state.nodes, event.id);
+  const nodes = state.nodes
+    .filter((n) => n.id !== event.id)
+    .map((n) => (n.parentId === event.id ? { ...n, parentId: null } : n));
+
+  // Prefer a single IF root if present.
+  const ifRoot = kids.find((n) => n.kind === "if") ?? nodes.find((n) => n.kind === "if");
+  if (ifRoot) {
+    return {
+      ...state,
+      nodes: nodes.map((n) =>
+        n.id === ifRoot.id
+          ? { ...n, parentId: null }
+          : n.parentId === null && n.id !== ifRoot.id && isConditionKind(n.kind)
+            ? { ...n, parentId: ifRoot.id }
+            : n,
+      ),
+    };
+  }
+
+  if (nodes.every((n) => n.parentId !== null) || nodes.length === 0) {
+    return { ...state, nodes: [createNode("if", null, "condition"), ...nodes] };
+  }
+
+  return { ...state, nodes };
+}
+
 export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNodeKind[] {
+  if (isEventKind(node.kind)) {
+    const kinds: GraphNodeKind[] = ["action"];
+    const hasIf = _nodes.some((n) => n.kind === "if");
+    if (!hasIf) kinds.unshift("if");
+    return kinds;
+  }
+
   if (isConditionKind(node.kind)) {
-    const kinds: GraphNodeKind[] = ["and", "or", "source", "then"];
+    const kinds: GraphNodeKind[] = ["and", "or", "source", "action"];
     const hasElse = _nodes.some((n) => n.kind === "else");
     if (!hasElse) kinds.push("else");
-    // Rule-level catch under IF is still allowed when none exists yet.
     const hasCatch = _nodes.some((n) => n.kind === "catch");
     if (!hasCatch) kinds.push("catch");
     return kinds;
@@ -102,11 +212,9 @@ export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNo
   }
 
   if (isActionKind(node.kind)) {
-    // SOURCE from any action node; AND adds another action of the same kind.
     const kinds: GraphNodeKind[] = ["source", "and"];
-    // CATCH hangs off THEN / ELSE (error path for that branch), not only IF.
     if (
-      (node.kind === "then" || node.kind === "else") &&
+      (node.kind === "action" || node.kind === "else") &&
       !_nodes.some((n) => n.kind === "catch" && n.parentId === node.id)
     ) {
       kinds.push("catch");
@@ -117,17 +225,20 @@ export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNo
   return [];
 }
 
-/** Attach an empty CATCH under the first THEN when one is missing anywhere. */
-export function ensureCatchForThen(state: GraphState): GraphState {
-  const firstThen = state.nodes.find((n) => n.kind === "then");
-  if (!firstThen) return state;
+/** Attach an empty CATCH under the first ACTION when one is missing anywhere. */
+export function ensureCatchForAction(state: GraphState): GraphState {
+  const firstAction = state.nodes.find((n) => n.kind === "action");
+  if (!firstAction) return state;
   if (state.nodes.some((n) => n.kind === "catch")) return state;
 
   return {
     ...state,
-    nodes: [...state.nodes, createNode("catch", firstThen.id)],
+    nodes: [...state.nodes, createNode("catch", firstAction.id)],
   };
 }
+
+/** @deprecated Use ensureCatchForAction */
+export const ensureCatchForThen = ensureCatchForAction;
 
 export function addChild(state: GraphState, parentId: string, kind: GraphNodeKind): GraphState {
   const parent = state.nodes.find((n) => n.id === parentId);
@@ -146,20 +257,19 @@ export function addChild(state: GraphState, parentId: string, kind: GraphNodeKin
 
   const child = createNode(childKind, parentId, slot);
   let next: GraphState = { ...state, nodes: [...state.nodes, child] };
-  if (childKind === "then") next = ensureCatchForThen(next);
+  if (childKind === "action") next = ensureCatchForAction(next);
   return next;
 }
 
 export function removeNode(state: GraphState, nodeId: string): GraphState {
-  const root = state.nodes.find((n) => n.kind === "if" && n.parentId === null);
+  const root = graphRoot(state.nodes);
   if (root && root.id === nodeId) return state;
 
   const target = state.nodes.find((n) => n.id === nodeId);
-  // THEN always keeps a CATCH: don't remove the last catch while a then remains.
   if (target?.kind === "catch") {
     const otherCatches = state.nodes.filter((n) => n.kind === "catch" && n.id !== nodeId);
-    const hasThen = state.nodes.some((n) => n.kind === "then");
-    if (hasThen && otherCatches.length === 0) return state;
+    const hasAction = state.nodes.some((n) => n.kind === "action");
+    if (hasAction && otherCatches.length === 0) return state;
   }
 
   const toRemove = new Set<string>();
@@ -173,8 +283,7 @@ export function removeNode(state: GraphState, nodeId: string): GraphState {
     ...state,
     nodes: state.nodes.filter((n) => !toRemove.has(n.id)),
   };
-  // If we removed every then, catch can stay; if then remains somehow, re-ensure.
-  return ensureCatchForThen(next);
+  return ensureCatchForAction(next);
 }
 
 export function updateNode(state: GraphState, nodeId: string, patch: Partial<GraphNode>): GraphState {
@@ -195,10 +304,10 @@ export function sourceAttachTo(node: GraphNode, nodes: GraphNode[]): SourceAttac
   while (cursor) {
     const parent = byId.get(cursor);
     if (!parent) break;
-    if (parent.kind === "then" || parent.kind === "else" || parent.kind === "catch") {
+    if (parent.kind === "action" || parent.kind === "else" || parent.kind === "catch") {
       return parent.kind;
     }
-    if (isConditionKind(parent.kind)) return "if";
+    if (isConditionKind(parent.kind) || isEventKind(parent.kind)) return "if";
     cursor = parent.parentId;
   }
   return "if";
@@ -206,9 +315,10 @@ export function sourceAttachTo(node: GraphNode, nodes: GraphNode[]): SourceAttac
 
 export function graphToRulePayload(state: GraphState): {
   if: RuleIf;
-  then: RuleThen;
+  action: RuleThen;
   else?: RuleThen;
   catch?: RuleThen;
+  event?: RuleEvent;
 } {
   const conditionNodes = state.nodes.filter(
     (n) => isConditionKind(n.kind) && isConditionConfigured(n),
@@ -235,11 +345,11 @@ export function graphToRulePayload(state: GraphState): {
     }),
   ];
 
-  const thenNodes = state.nodes.filter((n) => n.kind === "then" && isActionConfigured(n));
+  const actionNodes = state.nodes.filter((n) => n.kind === "action" && isActionConfigured(n));
   const elseNodes = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
   const catchNodes = state.nodes.filter((n) => n.kind === "catch" && isActionConfigured(n));
 
-  const thenClauses: RuleThenClause[] = thenNodes.map((n) => ({
+  const actionClauses: RuleThenClause[] = actionNodes.map((n) => ({
     integration: n.integration!,
     action: n.action!,
     config: n.config,
@@ -265,15 +375,17 @@ export function graphToRulePayload(state: GraphState): {
     ? String(everyClause.config.interval ?? "15m").trim() || "15m"
     : state.pollInterval;
   const ifBlock = serializeIf(ifClauses, pollInterval, mode);
-  const thenBlock = serializeThen(thenClauses) ?? { all: [] as RuleThenClause[] };
+  const actionBlock = serializeThen(actionClauses) ?? { all: [] as RuleThenClause[] };
   const elseBlock = serializeThen(elseClauses);
   const catchBlock = serializeThen(catchClauses);
+  const event = eventConfigFromGraph(state);
 
   return {
     if: ifBlock,
-    then: thenBlock,
+    action: actionBlock,
     ...(elseBlock ? { else: elseBlock } : {}),
     ...(catchBlock ? { catch: catchBlock } : {}),
+    ...(event ? { event } : {}),
   };
 }
 
@@ -286,34 +398,54 @@ function isDataClause(clause: RuleIfClause, integrations: Integration[]): boolea
 export function ruleToGraph(
   rule: {
     if: RuleIf;
-    then: RuleThen;
+    action?: RuleThen;
+    then?: RuleThen;
     else?: RuleThen;
     catch?: RuleThen;
+    runTrigger?: string;
+    event?: RuleEvent;
   },
   integrations: Integration[] = [],
 ): GraphState {
   const ifBlock = normalizeIf(rule.if);
-  const thenBlock = normalizeThen(rule.then);
+  const actionBlock = normalizeThen(rule.action ?? rule.then);
   const elseBlock = normalizeThen(rule.else);
   const catchBlock = normalizeThen(rule.catch);
   const mode = ifBlock.mode;
+  const isEventRule = rule.runTrigger === "event" || rule.runTrigger === "webhook";
 
   const conditionClauses = ifBlock.clauses.filter((c) => !isDataClause(c, integrations));
   const sourceClauses = ifBlock.clauses.filter((c) => isDataClause(c, integrations));
 
-  // Without integrations yet, treat everything as conditions; refineGraphSlots will fix later.
   const useSplit = integrations.length > 0;
   const conditions = useSplit ? conditionClauses : ifBlock.clauses;
   const sources = useSplit ? sourceClauses : [];
 
   const nodes: GraphNode[] = [];
-  let conditionParentId: string | null = null;
+  let eventId: string | null = null;
+
+  if (isEventRule) {
+    const eventNode = createNode("event", null);
+    const source = rule.event?.source === "homeassistant" ? "homeassistant" : "webhook";
+    eventNode.config = {
+      source,
+      ...(source === "homeassistant"
+        ? {
+            eventType: rule.event?.eventType ?? "state_changed",
+            entityId: rule.event?.entityId ?? "",
+          }
+        : {}),
+    };
+    nodes.push(eventNode);
+    eventId = eventNode.id;
+  }
+
+  let conditionParentId: string | null = eventId;
   let lastConditionId: string | null = null;
 
   conditions.forEach((clause, index) => {
-    const kind: GraphNodeKind =
-      index === 0 ? "if" : mode === "any" ? "or" : "and";
-    const node = createNode(kind, conditionParentId, "condition");
+    const kind: GraphNodeKind = index === 0 ? "if" : mode === "any" ? "or" : "and";
+    const node = createNode(kind, index === 0 ? eventId : conditionParentId, "condition");
     node.integration = clause.integration;
     node.trigger = clause.trigger;
     node.config = clause.config;
@@ -322,16 +454,21 @@ export function ruleToGraph(
     lastConditionId = node.id;
   });
 
-  if (nodes.length === 0) {
+  if (!lastConditionId && !isEventRule) {
     nodes.push(createNode("if", null, "condition"));
-    lastConditionId = nodes[0].id;
+    lastConditionId = nodes[nodes.length - 1].id;
   }
 
-  const attachPoint = lastConditionId!;
+  const attachPoint = lastConditionId ?? eventId;
+  if (!attachPoint) {
+    nodes.push(createNode("if", null, "condition"));
+  }
+  const actionParent = lastConditionId ?? eventId ?? nodes[0].id;
 
-  thenBlock.all.forEach((clause, index) => {
-    const parent = index === 0 ? attachPoint : nodes.filter((n) => n.kind === "then").at(-1)?.id ?? attachPoint;
-    const node = createNode("then", parent);
+  actionBlock.all.forEach((clause, index) => {
+    const parent =
+      index === 0 ? actionParent : nodes.filter((n) => n.kind === "action").at(-1)?.id ?? actionParent;
+    const node = createNode("action", parent);
     node.integration = clause.integration;
     node.action = clause.action;
     node.config = clause.config;
@@ -339,7 +476,10 @@ export function ruleToGraph(
   });
 
   elseBlock.all.forEach((clause, index) => {
-    const parent = index === 0 ? attachPoint : nodes.filter((n) => n.kind === "else").at(-1)?.id ?? attachPoint;
+    const parent =
+      index === 0
+        ? lastConditionId ?? actionParent
+        : nodes.filter((n) => n.kind === "else").at(-1)?.id ?? lastConditionId ?? actionParent;
     const node = createNode("else", parent);
     node.integration = clause.integration;
     node.action = clause.action;
@@ -347,8 +487,8 @@ export function ruleToGraph(
     nodes.push(node);
   });
 
-  const firstThenForCatch = nodes.find((n) => n.kind === "then");
-  const catchAttach = firstThenForCatch?.id ?? attachPoint;
+  const firstActionForCatch = nodes.find((n) => n.kind === "action");
+  const catchAttach = firstActionForCatch?.id ?? actionParent;
 
   catchBlock.all.forEach((clause, index) => {
     const parent =
@@ -362,7 +502,6 @@ export function ruleToGraph(
     nodes.push(node);
   });
 
-  // Attach SOURCE nodes after actions so attachTo: then/else/catch can find parents.
   const placeSources = (clauses: RuleIfClause[], seedParentId: string) => {
     let parentId = seedParentId;
     for (const clause of clauses) {
@@ -376,19 +515,19 @@ export function ruleToGraph(
   };
 
   const sourcesByAttach = (target: SourceAttachTo) =>
-    sources.filter((clause) => (clause.attachTo ?? "if") === target);
+    sources.filter((clause) => normalizeSourceAttachTo(clause.attachTo) === target);
 
-  placeSources(sourcesByAttach("if"), lastConditionId!);
+  if (lastConditionId) placeSources(sourcesByAttach("if"), lastConditionId);
 
-  const firstThen = nodes.find((n) => n.kind === "then");
+  const firstAction = nodes.find((n) => n.kind === "action");
   const firstElse = nodes.find((n) => n.kind === "else");
   const firstCatch = nodes.find((n) => n.kind === "catch");
 
-  placeSources(sourcesByAttach("then"), firstThen?.id ?? lastConditionId!);
-  placeSources(sourcesByAttach("else"), firstElse?.id ?? lastConditionId!);
-  placeSources(sourcesByAttach("catch"), firstCatch?.id ?? lastConditionId!);
+  placeSources(sourcesByAttach("action"), firstAction?.id ?? lastConditionId ?? actionParent);
+  placeSources(sourcesByAttach("else"), firstElse?.id ?? lastConditionId ?? actionParent);
+  placeSources(sourcesByAttach("catch"), firstCatch?.id ?? lastConditionId ?? actionParent);
 
-  return ensureCatchForThen({
+  return ensureCatchForAction({
     nodes,
     pollInterval: ifBlock.pollInterval ?? "15m",
   });
@@ -396,7 +535,7 @@ export function ruleToGraph(
 
 /**
  * Classify trigger nodes as condition vs source from integration metadata.
- * Preserves parent links — SOURCE stays attached to wherever it was added (IF or THEN).
+ * Preserves parent links — SOURCE stays attached to wherever it was added.
  */
 export function refineGraphSlots(state: GraphState, integrations: Integration[]): GraphState {
   if (integrations.length === 0) return state;
@@ -410,8 +549,11 @@ export function refineGraphSlots(state: GraphState, integrations: Integration[])
     if (!trigger) return node;
 
     if (trigger.kind === "data") {
-      // Never convert the root IF into a source node.
       if (node.kind === "if" && !node.parentId) {
+        return { ...node, slot: "condition" as const };
+      }
+      // IF under EVENT should stay IF even for data triggers if it's the filter root.
+      if (node.kind === "if") {
         return { ...node, slot: "condition" as const };
       }
       return { ...node, kind: "source" as const, slot: "source" as const };
@@ -420,7 +562,11 @@ export function refineGraphSlots(state: GraphState, integrations: Integration[])
     if (node.kind === "source") {
       return {
         ...node,
-        kind: (node.parentId ? "and" : "if") as GraphNodeKind,
+        kind: (node.parentId && !isEventKind(
+          state.nodes.find((n) => n.id === node.parentId)?.kind ?? "if",
+        )
+          ? "and"
+          : "if") as GraphNodeKind,
         slot: "condition" as const,
       };
     }
@@ -428,48 +574,56 @@ export function refineGraphSlots(state: GraphState, integrations: Integration[])
     return { ...node, slot: "condition" as const };
   });
 
-  return ensureCatchForThen({ ...state, nodes });
+  return ensureCatchForAction({ ...state, nodes });
 }
 
 export function graphValidation(state: GraphState): { ok: boolean; message?: string } {
+  const eventNode = state.nodes.find((n) => n.kind === "event");
   const conditions = state.nodes.filter(
     (n) => isConditionKind(n.kind) && isConditionConfigured(n),
   );
-  const thens = state.nodes.filter((n) => n.kind === "then" && isActionConfigured(n));
+  const actions = state.nodes.filter((n) => n.kind === "action" && isActionConfigured(n));
   const elses = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
   const catches = state.nodes.filter((n) => n.kind === "catch" && isActionConfigured(n));
-  const hasThenNode = state.nodes.some((n) => n.kind === "then");
+  const hasActionNode = state.nodes.some((n) => n.kind === "action");
   const hasCatchNode = state.nodes.some((n) => n.kind === "catch");
 
-  if (conditions.length === 0) {
+  if (eventNode && !isEventConfigured(eventNode)) {
+    return { ok: false, message: "Configure the Event source (webhook or Home Assistant)." };
+  }
+
+  if (!eventNode && conditions.length === 0) {
     return { ok: false, message: "Add at least one If condition." };
   }
-  if (thens.length === 0 && elses.length === 0 && catches.length === 0) {
-    return { ok: false, message: "Add a Then, Else, or Catch action." };
+
+  if (actions.length === 0 && elses.length === 0 && catches.length === 0) {
+    return { ok: false, message: "Add an Action, Else, or Catch." };
   }
-  if (hasThenNode && !hasCatchNode) {
-    return { ok: false, message: "Then requires a Catch action for errors." };
+  if (hasActionNode && !hasCatchNode) {
+    return { ok: false, message: "Action requires a Catch for errors." };
   }
   return { ok: true };
 }
 
 export const NODE_COLORS: Record<GraphNodeKind, { fill: string; stroke: string; label: string }> = {
+  event: { fill: "#3f4f6a", stroke: "#2f3c52", label: "EVENT" },
   if: { fill: "#2a261f", stroke: "#2a261f", label: "IF" },
   and: { fill: "#a07a3a", stroke: "#8a6830", label: "AND" },
   or: { fill: "#5b7c99", stroke: "#4a6780", label: "OR" },
   source: { fill: "#0f766e", stroke: "#0d9488", label: "SOURCE" },
-  then: { fill: "#3d6b4f", stroke: "#2f5440", label: "THEN" },
+  action: { fill: "#3d6b4f", stroke: "#2f5440", label: "ACTION" },
   else: { fill: "#8b4d3b", stroke: "#6f3d2f", label: "ELSE" },
   catch: { fill: "#b45309", stroke: "#92400e", label: "CATCH" },
 };
 
 /** Dark-mode accents stay in the same warm family but stay readable on espresso parchment. */
 export const NODE_COLORS_DARK: Record<GraphNodeKind, { fill: string; stroke: string; label: string }> = {
+  event: { fill: "#8fa3c4", stroke: "#6f86a8", label: "EVENT" },
   if: { fill: "#d9cdb6", stroke: "#cfc3a8", label: "IF" },
   and: { fill: "#c4a05a", stroke: "#a88840", label: "AND" },
   or: { fill: "#7aa2d4", stroke: "#5b7c99", label: "OR" },
   source: { fill: "#2dd4bf", stroke: "#14b8a6", label: "SOURCE" },
-  then: { fill: "#6b9b7a", stroke: "#4f7d60", label: "THEN" },
+  action: { fill: "#6b9b7a", stroke: "#4f7d60", label: "ACTION" },
   else: { fill: "#c47862", stroke: "#a05c48", label: "ELSE" },
   catch: { fill: "#e0a04a", stroke: "#c4842e", label: "CATCH" },
 };
