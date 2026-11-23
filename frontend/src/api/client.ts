@@ -45,6 +45,11 @@ export interface Integration {
   name: string;
   icon: string;
   color: string;
+  /** True for user/AI-defined HTTP integrations. */
+  custom?: boolean;
+  description?: string;
+  /** Settings fields for custom (and optionally built-in) integrations. */
+  configFields?: FieldSchema[];
   triggers?: TriggerMeta[];
   actions?: ActionMeta[];
 }

@@ -16,6 +16,10 @@ const icons: Record<string, string> = {
   cursor: "⌘",
   script: "$_",
   agent: "🤖",
+  webhook: "🔗",
+  api: "🔌",
+  discord: "💬",
+  slack: "💬",
 };
 
 /** Shared horizontal form layout so labels and controls line up across the app. */

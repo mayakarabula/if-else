@@ -11,6 +11,7 @@ import { hooksRouter, integrationsRouter, rulesRouter, runsRouter } from "./api/
 import { createArenaMiddleware } from "./engine/arena.js";
 import { getProducerQueue, waitForQueueReady } from "./engine/queue.js";
 import { startScheduler } from "./engine/scheduler.js";
+import { reloadCustomIntegrations } from "./integrations/registry.js";
 import { ensureDirs } from "./store/rules.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -19,6 +20,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET ?? "dev-session-secret-change-
 
 async function main() {
   await ensureDirs();
+  await reloadCustomIntegrations();
   configurePassport();
 
   const queue = getProducerQueue();

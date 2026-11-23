@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import yaml from "js-yaml";
-import { listIntegrationsForApi } from "../integrations/registry.js";
+import {
+  deleteCustomIntegrationSpec,
+  getCustomIntegrationSpec,
+  upsertCustomIntegrationSpec,
+} from "../integrations/custom/store.js";
+import type { CustomIntegrationSpec } from "../integrations/custom/types.js";
+import { listIntegrationsForApi, reloadCustomIntegrations } from "../integrations/registry.js";
 import {
   deleteRule,
   listRules,
@@ -121,7 +127,56 @@ export async function serviceSetEnabled(id: string, enabled: boolean) {
 }
 
 export async function serviceListIntegrations() {
+  await reloadCustomIntegrations();
   return listIntegrationsForApi();
+}
+
+export async function serviceCreateCustomIntegration(input: CustomIntegrationSpec) {
+  const existing = await getCustomIntegrationSpec(input.id);
+  if (existing) {
+    throw new Error(`Custom integration "${input.id}" already exists — use update instead`);
+  }
+  const saved = await upsertCustomIntegrationSpec(input);
+  await reloadCustomIntegrations();
+  return saved;
+}
+
+export async function serviceUpdateCustomIntegration(input: CustomIntegrationSpec) {
+  const existing = await getCustomIntegrationSpec(input.id);
+  if (!existing) {
+    throw new Error(`Custom integration not found: ${input.id}`);
+  }
+  const saved = await upsertCustomIntegrationSpec({
+    ...existing,
+    ...input,
+    id: existing.id,
+    name: input.name?.trim() ? input.name : existing.name,
+    actions: input.actions ?? existing.actions,
+    triggers: input.triggers ?? existing.triggers,
+    configFields: input.configFields ?? existing.configFields,
+    createdAt: existing.createdAt,
+  });
+  await reloadCustomIntegrations();
+  return saved;
+}
+
+export async function serviceDeleteCustomIntegration(id: string) {
+  const deleted = await deleteCustomIntegrationSpec(id);
+  if (!deleted) throw new Error(`Custom integration not found: ${id}`);
+  await reloadCustomIntegrations();
+  // Drop saved secrets/settings for this integration id.
+  const config = await loadIntegrationConfig();
+  if (config[id]) {
+    const { [id]: _removed, ...rest } = config;
+    await saveIntegrationConfig(rest);
+  }
+  return { deleted: id };
+}
+
+export async function serviceGetCustomIntegration(id: string) {
+  const spec = await getCustomIntegrationSpec(id);
+  if (!spec) throw new Error(`Custom integration not found: ${id}`);
+  return spec;
 }
 
 export async function serviceGetIntegrationConfig() {

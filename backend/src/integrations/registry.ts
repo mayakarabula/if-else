@@ -21,8 +21,11 @@ import { appendParagraph as notionAppendParagraph, createPage as notionCreatePag
 import { launchCloudAgent } from "./cursor/actions.js";
 import { runScriptAction } from "./script/actions.js";
 import { captureScript } from "./script/triggers.js";
+import { compileCustomIntegration, toCustomIntegrationApi } from "./custom/runtime.js";
+import { loadCustomIntegrationSpecs } from "./custom/store.js";
+import type { CustomIntegrationSpec } from "./custom/types.js";
 
-export const integrations: IntegrationDefinition[] = [
+export const builtinIntegrations: IntegrationDefinition[] = [
   {
     id: "time",
     name: "Time",
@@ -114,8 +117,23 @@ export const integrations: IntegrationDefinition[] = [
   },
 ];
 
+/** @deprecated Prefer builtinIntegrations + getAllIntegrations(); kept for older imports. */
+export const integrations = builtinIntegrations;
+
+let customCompiled: IntegrationDefinition[] = [];
+let customSpecs: CustomIntegrationSpec[] = [];
+
+export async function reloadCustomIntegrations(): Promise<void> {
+  customSpecs = await loadCustomIntegrationSpecs();
+  customCompiled = customSpecs.map(compileCustomIntegration);
+}
+
+export function getAllIntegrations(): IntegrationDefinition[] {
+  return [...builtinIntegrations, ...customCompiled];
+}
+
 export function getIntegration(id: string): IntegrationDefinition | undefined {
-  return integrations.find((i) => i.id === id);
+  return getAllIntegrations().find((i) => i.id === id);
 }
 
 export function getTrigger(integrationId: string, triggerId: string) {
@@ -129,11 +147,12 @@ export function getAction(integrationId: string, actionId: string) {
 }
 
 export function listIntegrationsForApi() {
-  return integrations.map(({ id, name, icon, color, triggers, actions }) => ({
+  const builtins = builtinIntegrations.map(({ id, name, icon, color, triggers, actions }) => ({
     id,
     name,
     icon,
     color,
+    custom: false as const,
     triggers: triggers?.map(({ id, label, description, fields, kind, outputs, actionPlan, errorCallback }) => ({
       id,
       label,
@@ -153,4 +172,11 @@ export function listIntegrationsForApi() {
       errorCallback,
     })),
   }));
+
+  const customs = customSpecs.map(toCustomIntegrationApi);
+  return [...builtins, ...customs];
+}
+
+export function listCustomIntegrationSpecs(): CustomIntegrationSpec[] {
+  return customSpecs;
 }

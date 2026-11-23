@@ -280,7 +280,11 @@ export function AgentChatPanel() {
 
   const suggestions =
     pageContext.page === "integrations"
-      ? ["Help me configure Telegram", "What's missing in my integrations?"]
+      ? [
+          "Help me configure Telegram",
+          "Add a Discord webhook integration",
+          "What's missing in my integrations?",
+        ]
       : pageContext.page === "edit"
         ? ["Explain this rule", "Add a Catch that notifies me on errors"]
         : pageContext.page === "create"
