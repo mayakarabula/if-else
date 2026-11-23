@@ -1,6 +1,6 @@
 # Integrations overview
 
-Integrations expose **triggers** (IF / SOURCE) and **actions** (THEN / ELSE / CATCH). Configure secrets under **Integrations** in the UI (`config/integrations.yaml`).
+Integrations expose **triggers** (IF / SOURCE) and **actions** (ACTION / ELSE / CATCH). Configure secrets under **Integrations** in the UI (`config/integrations.yaml`).
 
 | Id | Name | Typical use |
 | -- | ---- | ----------- |

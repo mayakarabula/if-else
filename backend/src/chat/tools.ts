@@ -221,7 +221,7 @@ export const chatTools: ChatToolDefinition[] = [
           },
           actions: {
             type: "array",
-            description: "HTTP actions for THEN/ELSE/CATCH",
+            description: "HTTP actions for ACTION/ELSE/CATCH",
             items: {
               type: "object",
               properties: {

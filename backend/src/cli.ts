@@ -50,7 +50,7 @@ Environment:
 Examples:
   npm run cli -- list
   npm run cli -- create --file ./examples/cold-alert.yaml
-  npm run cli -- create --body '{"name":"Ping","if":{"integration":"time","trigger":"every","config":{"interval":"15m"}},"then":{"integration":"telegram","action":"send_message","config":{"text":"hi"}}}'
+  npm run cli -- create --body '{"name":"Ping","if":{"integration":"time","trigger":"every","config":{"interval":"15m"}},"action":{"integration":"telegram","action":"send_message","config":{"text":"hi"}}}'
 `);
   process.exit(exitCode);
 }

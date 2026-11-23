@@ -18,7 +18,7 @@ if-else splits scheduling from execution so the API stays responsive while worke
 | Piece        | Role |
 | ------------ | ---- |
 | **api**      | Express HTTP API, auth, chat, scheduler that *enqueues* due rules |
-| **worker**   | bee-queue consumer — evaluates IF / runs THEN·ELSE·CATCH |
+| **worker**   | bee-queue consumer — evaluates IF / runs ACTION·ELSE·CATCH |
 | **redis**    | Queue backing store |
 | **frontend** | Vite + React UI (graph editor, integrations, activity) |
 | **CLI / MCP**| Same YAML store as the UI |

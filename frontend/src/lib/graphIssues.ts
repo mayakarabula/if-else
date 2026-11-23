@@ -220,6 +220,13 @@ export function analyzeNodeIssues(
   state: GraphState,
   integrations: Integration[],
 ): GraphIssue[] {
+  // Optional IF under EVENT: ignore until the user configures a filter.
+  if (node.kind === "if" && !isConditionConfigured(node)) {
+    const parent = state.nodes.find((n) => n.id === node.parentId);
+    if (parent?.kind === "event") {
+      return templateIssues(node, state, integrations);
+    }
+  }
   return [...requiredFieldIssues(node, integrations), ...templateIssues(node, state, integrations)];
 }
 

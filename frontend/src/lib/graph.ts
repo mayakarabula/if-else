@@ -134,13 +134,24 @@ export function eventConfigFromGraph(state: GraphState): RuleEvent | undefined {
   };
 }
 
-/** Ensure an EVENT root exists (reparents the previous IF root underneath). */
+/** Ensure an EVENT root exists (reparents a configured IF underneath; drops empty IF). */
 export function ensureEventRoot(state: GraphState): GraphState {
   const existing = state.nodes.find((n) => n.kind === "event" && n.parentId === null);
   if (existing) return state;
 
   const event = createNode("event", null);
   const previousRoot = state.nodes.find((n) => n.parentId === null);
+
+  // Empty IF placeholder isn't useful under EVENT — user can add a filter later.
+  if (
+    previousRoot &&
+    previousRoot.kind === "if" &&
+    !isConditionConfigured(previousRoot) &&
+    childrenOf(state.nodes, previousRoot.id).length === 0
+  ) {
+    return { ...state, nodes: [event] };
+  }
+
   const nodes = state.nodes.map((n) =>
     previousRoot && n.id === previousRoot.id ? { ...n, parentId: event.id } : n,
   );
