@@ -22,6 +22,7 @@ import {
   formLayout,
   IntegrationIcon,
   resolveIntegrationIcon,
+  verticalFormProps,
 } from "../components/ui";
 
 const integrationFields: Record<
@@ -696,19 +697,11 @@ export function IntegrationsPage() {
                 <code>CURSOR_API_KEY</code> is set in the backend environment.
               </Typography.Paragraph>
             )}
-            <Form
-              layout="horizontal"
-              labelAlign="left"
-              colon={false}
-              requiredMark={false}
-              labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
-              wrapperCol={{ flex: "1 1 auto" }}
-              style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 24 }}
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Form {...verticalFormProps} style={{ maxWidth: formLayout.controlWidth + 24 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {editing.id !== "agentchat" && (
                   <>
-                    <Form.Item label="Name" style={{ marginBottom: 0 }}>
+                    <Form.Item label="Name" style={{ marginBottom: 8 }}>
                       <Input
                         value={metaDraft.name}
                         onChange={(e) => setMetaDraft((prev) => ({ ...prev, name: e.target.value }))}
@@ -716,13 +709,13 @@ export function IntegrationsPage() {
                         style={{ maxWidth: formLayout.controlWidth }}
                       />
                     </Form.Item>
-                    <Form.Item label="Icon" style={{ marginBottom: 0 }}>
+                    <Form.Item label="Icon" style={{ marginBottom: 8 }}>
                       <EmojiPickerField
                         value={metaDraft.icon}
                         onChange={(emoji) => setMetaDraft((prev) => ({ ...prev, icon: emoji }))}
                       />
                     </Form.Item>
-                    <Form.Item label="Color" style={{ marginBottom: 0 }}>
+                    <Form.Item label="Color" style={{ marginBottom: 8 }}>
                       <ColorPicker
                         value={metaDraft.color || "#64748B"}
                         showText
@@ -732,7 +725,7 @@ export function IntegrationsPage() {
                         }
                       />
                     </Form.Item>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, paddingLeft: formLayout.labelWidth }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
                       <IntegrationIcon
                         integration={{
                           ...editing,

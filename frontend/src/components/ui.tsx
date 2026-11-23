@@ -37,12 +37,18 @@ export function resolveIntegrationIcon(icon: string | undefined, fallback = "?")
   return fallback;
 }
 
-/** Shared horizontal form layout so labels and controls line up across the app. */
+/** Shared form sizing — labels sit above fields (vertical layout). */
 export const formLayout = {
-  labelWidth: 132,
-  controlWidth: 280,
+  controlWidth: 360,
   numberWidth: 112,
 } as const;
+
+/** Default Ant Design Form props used across configure modals. */
+export const verticalFormProps = {
+  layout: "vertical" as const,
+  colon: false,
+  requiredMark: false,
+};
 
 export function IntegrationIcon({
   integration,
