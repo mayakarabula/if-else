@@ -1,14 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as d3 from "d3";
 import { Button, Dropdown, Space, Tooltip, Typography, theme } from "antd";
 import {
+  AimOutlined,
+  ApiOutlined,
+  BranchesOutlined,
+  CloudDownloadOutlined,
   DeleteOutlined,
+  ExceptionOutlined,
+  FilterOutlined,
+  ForkOutlined,
+  PlayCircleOutlined,
   PlusOutlined,
+  PlusSquareOutlined,
+  QuestionCircleOutlined,
   SettingOutlined,
+  SwapOutlined,
   WarningFilled,
   ZoomInOutlined,
   ZoomOutOutlined,
-  AimOutlined,
 } from "@ant-design/icons";
 import type { Integration } from "../api/client";
 import {
@@ -32,6 +42,23 @@ import { formatFilterSummary } from "../lib/filters";
 import { analyzeGraphIssues, type GraphIssue } from "../lib/graphIssues";
 import { clauseLabel, formatClauseOverview } from "../lib/rules";
 import { useThemeMode } from "../theme";
+
+const NODE_ICONS: Record<GraphNodeKind, ReactNode> = {
+  event: <ApiOutlined />,
+  filter: <FilterOutlined />,
+  if: <QuestionCircleOutlined />,
+  and: <PlusSquareOutlined />,
+  or: <ForkOutlined />,
+  source: <CloudDownloadOutlined />,
+  action: <PlayCircleOutlined />,
+  else: <SwapOutlined />,
+  catch: <ExceptionOutlined />,
+};
+
+function iconForKindLabel(title: string, kind: GraphNodeKind): ReactNode {
+  if (title === "AND") return <BranchesOutlined />;
+  return NODE_ICONS[kind];
+}
 
 const ISSUE_RED = "#c45c4a";
 
@@ -562,16 +589,28 @@ export function RuleGraph({
                   pointerEvents="none"
                 />
 
-                <text
-                  x={ACCENT_W + 12}
-                  y={24}
-                  fontSize={11}
-                  fontWeight={800}
-                  letterSpacing="0.08em"
-                  fill={hasIssue ? ISSUE_RED : nodeColor.fill}
-                >
-                  {title}
-                </text>
+                <foreignObject x={ACCENT_W + 8} y={6} width={NODE_W - ACCENT_W - 72} height={24}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      height: 24,
+                      fontSize: 11,
+                      fontWeight: 800,
+                      letterSpacing: "0.08em",
+                      color: hasIssue ? ISSUE_RED : nodeColor.fill,
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", fontSize: 13, flexShrink: 0 }}>
+                      {iconForKindLabel(title, item.node.kind)}
+                    </span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
+                  </div>
+                </foreignObject>
 
                 <foreignObject x={ACCENT_W + 10} y={32} width={NODE_W - ACCENT_W - 44} height={42}>
                   <div
@@ -640,6 +679,7 @@ export function RuleGraph({
                       menu={{
                         items: addOptions.map((kind) => ({
                           key: kind,
+                          icon: NODE_ICONS[kind],
                           label: colors[kind].label,
                           onClick: () => onAddChild(item.id, kind),
                         })),
@@ -709,6 +749,9 @@ export function RuleGraph({
                   background: colors[kind].fill,
                 }}
               />
+              <span style={{ display: "inline-flex", fontSize: 12, color: colors[kind].fill }}>
+                {NODE_ICONS[kind]}
+              </span>
               {colors[kind].label}
             </span>
           ))}
