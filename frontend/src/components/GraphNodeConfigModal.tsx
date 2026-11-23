@@ -1,9 +1,26 @@
 import { useMemo, useState } from "react";
-import { AutoComplete, Button, Empty, Input, Modal, Radio, Select, Space, Typography } from "antd";
-import { EditOutlined } from "@ant-design/icons";
+import {
+  AutoComplete,
+  Button,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Radio,
+  Select,
+  Space,
+  Tag,
+  Typography,
+} from "antd";
+import {
+  ApiOutlined,
+  EditOutlined,
+  FilterOutlined,
+  QuestionCircleOutlined,
+} from "@ant-design/icons";
 import type { ActionMeta, Integration, TriggerMeta } from "../api/client";
 import { ConfigFields } from "./ClauseEditors";
-import { IntegrationIcon } from "./ui";
+import { formLayout, IntegrationIcon } from "./ui";
 import { buildArgumentItems } from "./AvailableVariables";
 import {
   isActionKind,
@@ -236,6 +253,16 @@ export function GraphNodeConfigModal({
   const showPicker = !isEvent && !isFilter && (!hasSelection || picking);
   const kindLabel = node?.kind.toUpperCase() ?? "Node";
   const nodeEventSource = String(node?.config.source ?? "webhook");
+  const kindIcon =
+    node?.kind === "filter" ? (
+      <FilterOutlined />
+    ) : node?.kind === "event" ? (
+      <ApiOutlined />
+    ) : node?.kind === "if" || node?.kind === "and" || node?.kind === "or" ? (
+      <QuestionCircleOutlined />
+    ) : null;
+  const filterOp = String(node?.config.op ?? "eq");
+  const needsFilterValue = filterNeedsValue(filterOp);
 
   const overview =
     hasSelection && node && !isEvent && !isFilter
@@ -297,7 +324,7 @@ export function GraphNodeConfigModal({
       : isEvent
         ? "EVENT — when this rule starts (webhook or Home Assistant)."
         : isFilter
-          ? "FILTER — compare a path (e.g. event.entityId or weather.temp) to a value. All filters must pass."
+          ? "Keep only events where a path matches a value. All filters must pass."
           : isSource
             ? "SOURCE — optional data (like weather) you can insert into Action / Else / Catch fields."
             : node.kind === "or"
@@ -314,7 +341,12 @@ export function GraphNodeConfigModal({
 
   return (
     <Modal
-      title={`Configure · ${kindLabel}`}
+      title={
+        <Space size={8}>
+          {kindIcon}
+          <span>{`Configure · ${kindLabel}`}</span>
+        </Space>
+      }
       open={open && Boolean(node)}
       onCancel={() => {
         setPicking(false);
@@ -342,112 +374,141 @@ export function GraphNodeConfigModal({
           <Typography.Text type="secondary">{help}</Typography.Text>
 
           {isFilter ? (
-            <Space direction="vertical" size={12} style={{ width: "100%" }}>
-              <div>
-                <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
-                  PATH
-                </Typography.Text>
-                <AutoComplete
-                  style={{ marginTop: 8, width: "100%", maxWidth: 420 }}
-                  options={filterPathOptions}
-                  value={String(node.config.path ?? "")}
-                  onChange={(value) => patchFilterConfig({ path: value })}
-                  placeholder="e.g. event.entityId"
-                  filterOption={(input, option) =>
-                    String(option?.value ?? "")
-                      .toLowerCase()
-                      .includes(input.toLowerCase())
-                  }
-                />
-              </div>
-              <div>
-                <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
-                  OPERATOR
-                </Typography.Text>
-                <Select
-                  style={{ marginTop: 8, width: "100%", maxWidth: 280 }}
-                  value={String(node.config.op ?? "eq")}
-                  options={FILTER_OPS.map((op) => ({ value: op.value, label: op.label }))}
-                  onChange={(op) => patchFilterConfig({ op })}
-                />
-              </div>
-              {filterNeedsValue(String(node.config.op ?? "eq")) && (
-                <div>
-                  <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
-                    VALUE
+            <Space direction="vertical" size={14} style={{ width: "100%" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: needsFilterValue
+                    ? "minmax(0, 1.4fr) minmax(120px, 0.7fr) minmax(0, 1fr)"
+                    : "minmax(0, 1.6fr) minmax(140px, 0.8fr)",
+                  gap: 10,
+                  alignItems: "end",
+                  width: "100%",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                    Path
                   </Typography.Text>
-                  <Input
-                    style={{ marginTop: 8, maxWidth: 420 }}
-                    value={String(node.config.value ?? "")}
-                    placeholder="Compare against this value"
-                    onChange={(e) => patchFilterConfig({ value: e.target.value })}
+                  <AutoComplete
+                    style={{ width: "100%" }}
+                    options={filterPathOptions}
+                    value={String(node.config.path ?? "")}
+                    onChange={(value) => patchFilterConfig({ path: value })}
+                    placeholder="event.entityId"
+                    filterOption={(input, option) =>
+                      String(option?.value ?? "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
                   />
                 </div>
-              )}
-            </Space>
-          ) : isEvent ? (
-            <>
-              <div>
-                <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
-                  SOURCE
-                </Typography.Text>
-                <div style={{ marginTop: 8 }}>
-                  <Radio.Group
-                    value={nodeEventSource === "homeassistant" ? "homeassistant" : "webhook"}
-                    onChange={(e) => {
-                      const source = e.target.value as "webhook" | "homeassistant";
-                      patchEventConfig(
-                        source === "homeassistant"
-                          ? {
-                              source,
-                              eventType: String(node.config.eventType ?? "").trim() || "state_changed",
-                              entityId: String(node.config.entityId ?? ""),
-                            }
-                          : { source },
-                      );
-                    }}
-                  >
-                    <Space direction="vertical">
-                      <Radio value="webhook">HTTP webhook</Radio>
-                      <Radio value="homeassistant">Home Assistant</Radio>
-                    </Space>
-                  </Radio.Group>
+                <div style={{ minWidth: 0 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                    Operator
+                  </Typography.Text>
+                  <Select
+                    style={{ width: "100%" }}
+                    value={filterOp}
+                    options={FILTER_OPS.map((op) => ({ value: op.value, label: op.label }))}
+                    onChange={(op) => patchFilterConfig({ op })}
+                  />
                 </div>
-              </div>
-
-              {nodeEventSource === "homeassistant" ? (
-                <Space direction="vertical" size={12} style={{ width: "100%" }}>
-                  <div>
-                    <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
-                      EVENT TYPE
+                {needsFilterValue && (
+                  <div style={{ minWidth: 0 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+                      Value
                     </Typography.Text>
                     <Input
-                      style={{ marginTop: 8 }}
+                      style={{ width: "100%" }}
+                      value={String(node.config.value ?? "")}
+                      placeholder="e.g. light.kitchen"
+                      onChange={(e) => patchFilterConfig({ value: e.target.value })}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Suggestions
+                </Typography.Text>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {filterPathOptions.slice(0, 8).map((option) => (
+                    <Tag
+                      key={option.value}
+                      style={{ cursor: "pointer", marginInlineEnd: 0 }}
+                      onClick={() => patchFilterConfig({ path: option.value })}
+                    >
+                      {option.label}
+                    </Tag>
+                  ))}
+                </div>
+              </div>
+            </Space>
+          ) : isEvent ? (
+            <Form
+              layout="horizontal"
+              labelAlign="left"
+              colon={false}
+              requiredMark={false}
+              labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
+              wrapperCol={{ flex: "1 1 auto" }}
+              style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 48 }}
+            >
+              <Form.Item label="Source" style={{ marginBottom: 12 }}>
+                <Radio.Group
+                  optionType="button"
+                  buttonStyle="solid"
+                  value={nodeEventSource === "homeassistant" ? "homeassistant" : "webhook"}
+                  onChange={(e) => {
+                    const source = e.target.value as "webhook" | "homeassistant";
+                    patchEventConfig(
+                      source === "homeassistant"
+                        ? {
+                            source,
+                            eventType: String(node.config.eventType ?? "").trim() || "state_changed",
+                            entityId: String(node.config.entityId ?? ""),
+                          }
+                        : { source },
+                    );
+                  }}
+                  options={[
+                    { label: "HTTP webhook", value: "webhook" },
+                    { label: "Home Assistant", value: "homeassistant" },
+                  ]}
+                />
+              </Form.Item>
+
+              {nodeEventSource === "homeassistant" ? (
+                <>
+                  <Form.Item label="Event type" style={{ marginBottom: 12 }}>
+                    <Input
                       value={String(node.config.eventType ?? "state_changed")}
                       placeholder="state_changed"
                       onChange={(e) => patchEventConfig({ eventType: e.target.value })}
+                      style={{ maxWidth: formLayout.controlWidth }}
                     />
-                  </div>
-                  <div>
-                    <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
-                      ENTITY ID
-                    </Typography.Text>
+                  </Form.Item>
+                  <Form.Item label="Entity ID" style={{ marginBottom: 0 }}>
                     <Input
-                      style={{ marginTop: 8 }}
                       value={String(node.config.entityId ?? "")}
                       placeholder="optional, e.g. light.kitchen"
                       onChange={(e) => patchEventConfig({ entityId: e.target.value })}
+                      style={{ maxWidth: formLayout.controlWidth }}
                     />
-                  </div>
-                </Space>
+                  </Form.Item>
+                </>
               ) : (
-                <Typography.Text type="secondary">
-                  {webhookUrl
-                    ? `HTTP webhook — ${webhookUrl}`
-                    : "HTTP webhook — URL is shown under Run when"}
-                </Typography.Text>
+                <Form.Item label="Webhook URL" style={{ marginBottom: 0 }}>
+                  {webhookUrl ? (
+                    <Input readOnly value={webhookUrl} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }} />
+                  ) : (
+                    <Typography.Text type="secondary">Shown under Run when</Typography.Text>
+                  )}
+                </Form.Item>
               )}
-            </>
+            </Form>
           ) : showPicker ? (
             <>
               <Input.Search
