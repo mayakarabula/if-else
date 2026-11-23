@@ -98,6 +98,7 @@ Services:
 | Service   | URL / port        |
 |-----------|-------------------|
 | Frontend  | http://localhost:5173 |
+| Wiki      | http://localhost:5174 |
 | API       | http://localhost:3001 |
 | Redis     | localhost:6379 |
 

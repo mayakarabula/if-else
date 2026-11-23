@@ -9,12 +9,12 @@ cp backend/.env.example backend/.env
 docker compose up --build
 ```
 
-| Service  | URL / port              |
-| -------- | ----------------------- |
-| Frontend | http://localhost:5173   |
-| API      | http://localhost:3001   |
-| Redis    | localhost:6379          |
-| Wiki     | `npm run wiki` (local)  |
+| Service  | URL / port            |
+| -------- | --------------------- |
+| Frontend | http://localhost:5173 |
+| Wiki     | http://localhost:5174 |
+| API      | http://localhost:3001 |
+| Redis    | localhost:6379        |
 
 Rule YAML and integration config are mounted from `./rules` and `./config`.
 
@@ -26,6 +26,8 @@ Rule YAML and integration config are mounted from `./rules` and `./config`.
 4. Enable the rule and watch **Activity** / Arena for runs.
 
 ## This wiki
+
+Included in `docker compose up` at http://localhost:5174. Locally without Docker:
 
 ```bash
 npm run wiki          # http://localhost:5174
