@@ -225,21 +225,6 @@ export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNo
   return [];
 }
 
-/** Attach an empty CATCH under the first ACTION when one is missing anywhere. */
-export function ensureCatchForAction(state: GraphState): GraphState {
-  const firstAction = state.nodes.find((n) => n.kind === "action");
-  if (!firstAction) return state;
-  if (state.nodes.some((n) => n.kind === "catch")) return state;
-
-  return {
-    ...state,
-    nodes: [...state.nodes, createNode("catch", firstAction.id)],
-  };
-}
-
-/** @deprecated Use ensureCatchForAction */
-export const ensureCatchForThen = ensureCatchForAction;
-
 export function addChild(state: GraphState, parentId: string, kind: GraphNodeKind): GraphState {
   const parent = state.nodes.find((n) => n.id === parentId);
   if (!parent) return state;
@@ -256,21 +241,12 @@ export function addChild(state: GraphState, parentId: string, kind: GraphNodeKin
   }
 
   const child = createNode(childKind, parentId, slot);
-  let next: GraphState = { ...state, nodes: [...state.nodes, child] };
-  if (childKind === "action") next = ensureCatchForAction(next);
-  return next;
+  return { ...state, nodes: [...state.nodes, child] };
 }
 
 export function removeNode(state: GraphState, nodeId: string): GraphState {
   const root = graphRoot(state.nodes);
   if (root && root.id === nodeId) return state;
-
-  const target = state.nodes.find((n) => n.id === nodeId);
-  if (target?.kind === "catch") {
-    const otherCatches = state.nodes.filter((n) => n.kind === "catch" && n.id !== nodeId);
-    const hasAction = state.nodes.some((n) => n.kind === "action");
-    if (hasAction && otherCatches.length === 0) return state;
-  }
 
   const toRemove = new Set<string>();
   const walk = (id: string) => {
@@ -279,11 +255,10 @@ export function removeNode(state: GraphState, nodeId: string): GraphState {
   };
   walk(nodeId);
 
-  let next: GraphState = {
+  return {
     ...state,
     nodes: state.nodes.filter((n) => !toRemove.has(n.id)),
   };
-  return ensureCatchForAction(next);
 }
 
 export function updateNode(state: GraphState, nodeId: string, patch: Partial<GraphNode>): GraphState {
@@ -527,10 +502,10 @@ export function ruleToGraph(
   placeSources(sourcesByAttach("else"), firstElse?.id ?? lastConditionId ?? actionParent);
   placeSources(sourcesByAttach("catch"), firstCatch?.id ?? lastConditionId ?? actionParent);
 
-  return ensureCatchForAction({
+  return {
     nodes,
     pollInterval: ifBlock.pollInterval ?? "15m",
-  });
+  };
 }
 
 /**
@@ -574,7 +549,7 @@ export function refineGraphSlots(state: GraphState, integrations: Integration[])
     return { ...node, slot: "condition" as const };
   });
 
-  return ensureCatchForAction({ ...state, nodes });
+  return { ...state, nodes };
 }
 
 export function graphValidation(state: GraphState): { ok: boolean; message?: string } {
@@ -585,8 +560,6 @@ export function graphValidation(state: GraphState): { ok: boolean; message?: str
   const actions = state.nodes.filter((n) => n.kind === "action" && isActionConfigured(n));
   const elses = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
   const catches = state.nodes.filter((n) => n.kind === "catch" && isActionConfigured(n));
-  const hasActionNode = state.nodes.some((n) => n.kind === "action");
-  const hasCatchNode = state.nodes.some((n) => n.kind === "catch");
 
   if (eventNode && !isEventConfigured(eventNode)) {
     return { ok: false, message: "Configure the Event source (webhook or Home Assistant)." };
@@ -598,9 +571,6 @@ export function graphValidation(state: GraphState): { ok: boolean; message?: str
 
   if (actions.length === 0 && elses.length === 0 && catches.length === 0) {
     return { ok: false, message: "Add an Action, Else, or Catch." };
-  }
-  if (hasActionNode && !hasCatchNode) {
-    return { ok: false, message: "Action requires a Catch for errors." };
   }
   return { ok: true };
 }

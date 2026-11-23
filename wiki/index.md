@@ -18,7 +18,7 @@ hero:
 
 features:
   - title: Graph rules
-    details: IF → AND/OR → ACTION / ELSE / CATCH on a d3 flow canvas. Catch is paired with Action for error handling.
+    details: IF → AND/OR → ACTION / ELSE / CATCH on a d3 flow canvas. Catch is optional for error handling.
   - title: Integrations
     details: Time, weather, Telegram, Gmail, Home Assistant, Zigbee, Google, Notion, Cursor, shell scripts — plus custom HTTP integrations the agent can create.
   - title: Agent chat

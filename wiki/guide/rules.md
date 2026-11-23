@@ -13,7 +13,7 @@ Rules are if-this-then-that documents stored as YAML. The UI edits them as a **d
 | **ELSE** | Actions when conditions fail |
 | **CATCH** | Actions when a trigger or action throws |
 
-**Action always gets a Catch.** Adding Action auto-adds an empty Catch under that Action (error edge). You can also add Catch from an Action/Else node’s “+” menu, or once under IF when none exists yet. You cannot remove the last Catch while Action exists. Configure Catch with <code v-pre>{{error.message}}</code> (and other <code v-pre>{{error.*}}</code> fields).
+**Catch is optional.** Add it from an Action/Else node’s “+” menu (error edge), or once under IF. Configure Catch with <code v-pre>{{error.message}}</code> (and other <code v-pre>{{error.*}}</code> fields).
 
 ## Run modes
 
