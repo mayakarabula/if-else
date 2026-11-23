@@ -124,8 +124,25 @@ let customCompiled: IntegrationDefinition[] = [];
 let customSpecs: CustomIntegrationSpec[] = [];
 
 export async function reloadCustomIntegrations(): Promise<void> {
-  customSpecs = await loadCustomIntegrationSpecs();
-  customCompiled = customSpecs.map(compileCustomIntegration);
+  const loaded = await loadCustomIntegrationSpecs();
+  const compiled: IntegrationDefinition[] = [];
+  const okSpecs: typeof loaded = [];
+  for (const spec of loaded) {
+    try {
+      const definition = compileCustomIntegration(spec);
+      // Keep catalog entries even if every step was invalid — UI can still show/delete them.
+      compiled.push(definition);
+      okSpecs.push(spec);
+    } catch (err) {
+      console.warn(
+        `[custom-integrations] skipped "${spec.id}": ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+  customSpecs = okSpecs;
+  customCompiled = compiled;
 }
 
 export function getAllIntegrations(): IntegrationDefinition[] {
