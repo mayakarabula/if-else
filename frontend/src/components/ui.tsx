@@ -22,13 +22,20 @@ export const INTEGRATION_ICONS: Record<string, string> = {
   slack: "💬",
 };
 
-/** @deprecated Use INTEGRATION_ICONS */
-const icons = INTEGRATION_ICONS;
-
 export const INTEGRATION_ICON_OPTIONS = Object.entries(INTEGRATION_ICONS).map(([value, glyph]) => ({
   value,
   label: `${glyph}  ${value}`,
 }));
+
+/** Resolve a stored icon key or raw emoji to a display glyph. */
+export function resolveIntegrationIcon(icon: string | undefined, fallback = "?"): string {
+  if (!icon) return fallback;
+  const mapped = INTEGRATION_ICONS[icon];
+  if (mapped) return mapped;
+  // Legacy keys are alphanumeric; anything else (emoji / symbols) renders as-is.
+  if (!/^[a-z0-9_-]+$/i.test(icon)) return icon;
+  return fallback;
+}
 
 /** Shared horizontal form layout so labels and controls line up across the app. */
 export const formLayout = {
@@ -46,6 +53,9 @@ export function IntegrationIcon({
 }) {
   const px = size === "sm" ? 40 : size === "lg" ? 64 : 48;
   const fontSize = size === "sm" ? 18 : size === "lg" ? 28 : 22;
+  const glyph = integration
+    ? resolveIntegrationIcon(integration.icon, integration.name[0] ?? "?")
+    : "?";
 
   return (
     <div
@@ -62,7 +72,7 @@ export function IntegrationIcon({
         flexShrink: 0,
       }}
     >
-      {integration ? icons[integration.icon] ?? integration.name[0] : "?"}
+      {glyph}
     </div>
   );
 }

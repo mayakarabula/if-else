@@ -2,12 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   App,
   Button,
+  ColorPicker,
   Empty,
   Form,
   Input,
   List,
   Modal,
-  Select,
   Space,
   Spin,
   Tag,
@@ -16,11 +16,12 @@ import {
 } from "antd";
 import { SearchOutlined, SettingOutlined } from "@ant-design/icons";
 import { api, type ChatStatus, type Integration } from "../api/client";
+import { EmojiPickerField } from "../components/EmojiPickerField";
 import {
   FieldInput,
   formLayout,
   IntegrationIcon,
-  INTEGRATION_ICON_OPTIONS,
+  resolveIntegrationIcon,
 } from "../components/ui";
 
 const integrationFields: Record<
@@ -479,7 +480,7 @@ export function IntegrationsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [metaDraft, setMetaDraft] = useState<{ name: string; icon: string; color: string }>({
     name: "",
-    icon: "send",
+    icon: "✈️",
     color: "#64748B",
   });
   const [query, setQuery] = useState("");
@@ -559,13 +560,14 @@ export function IntegrationsPage() {
 
   function openConfigure(integration: Integration) {
     const overlay = config[integration.id] ?? {};
+    const rawIcon = String(integration.custom ? integration.icon : overlay.icon ?? integration.icon);
     setMetaDraft({
       name: String(
         integration.custom
           ? integration.name
           : overlay.displayName ?? integration.name,
       ),
-      icon: String(integration.custom ? integration.icon : overlay.icon ?? integration.icon),
+      icon: resolveIntegrationIcon(rawIcon, "✈️"),
       color: String(integration.custom ? integration.color : overlay.color ?? integration.color),
     });
     setEditingId(integration.id);
@@ -585,7 +587,7 @@ export function IntegrationsPage() {
       if (editing.custom) {
         await api.updateCustomIntegrationMeta(editing.id, {
           name,
-          icon: metaDraft.icon.trim() || "send",
+          icon: metaDraft.icon.trim() || "✈️",
           color: metaDraft.color.trim() || "#64748B",
         });
       } else if (editing.id !== "agentchat") {
@@ -594,7 +596,7 @@ export function IntegrationsPage() {
           [editing.id]: {
             ...config[editing.id],
             displayName: name,
-            icon: metaDraft.icon.trim() || editing.icon,
+            icon: metaDraft.icon.trim() || resolveIntegrationIcon(editing.icon, "✈️"),
             color: metaDraft.color.trim() || editing.color,
           },
         };
@@ -715,21 +717,19 @@ export function IntegrationsPage() {
                       />
                     </Form.Item>
                     <Form.Item label="Icon" style={{ marginBottom: 0 }}>
-                      <Select
+                      <EmojiPickerField
                         value={metaDraft.icon}
-                        options={INTEGRATION_ICON_OPTIONS}
-                        onChange={(value) => setMetaDraft((prev) => ({ ...prev, icon: value }))}
-                        style={{ maxWidth: formLayout.controlWidth }}
-                        showSearch
-                        optionFilterProp="label"
+                        onChange={(emoji) => setMetaDraft((prev) => ({ ...prev, icon: emoji }))}
                       />
                     </Form.Item>
                     <Form.Item label="Color" style={{ marginBottom: 0 }}>
-                      <Input
-                        value={metaDraft.color}
-                        onChange={(e) => setMetaDraft((prev) => ({ ...prev, color: e.target.value }))}
-                        placeholder="#64748B"
-                        style={{ maxWidth: formLayout.controlWidth }}
+                      <ColorPicker
+                        value={metaDraft.color || "#64748B"}
+                        showText
+                        disabledAlpha
+                        onChange={(color) =>
+                          setMetaDraft((prev) => ({ ...prev, color: color.toHexString() }))
+                        }
                       />
                     </Form.Item>
                     <div style={{ display: "flex", alignItems: "center", gap: 12, paddingLeft: formLayout.labelWidth }}>
