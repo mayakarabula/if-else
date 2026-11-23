@@ -1,5 +1,5 @@
 /** Where a SOURCE clause should reattach in the editor graph after reload. */
-export type SourceAttachTo = "if" | "then" | "else" | "catch";
+export type SourceAttachTo = "if" | "action" | "else" | "catch";
 
 export interface RuleIfClause {
   integration: string;
@@ -8,9 +8,9 @@ export interface RuleIfClause {
   /**
    * Editor-only hint for data SOURCE nodes. Runtime ignores this — sources still
    * live in `if` so templates resolve — but reload uses it to keep the node under
-   * THEN / ELSE / CATCH instead of always reparenting onto IF.
+   * ACTION / ELSE / CATCH instead of always reparenting onto IF.
    */
-  attachTo?: SourceAttachTo;
+  attachTo?: SourceAttachTo | "then";
 }
 
 export interface RuleIfBlock {
@@ -35,10 +35,24 @@ export type RuleThen = RuleThenClause | RuleThenBlock;
 
 export type ConditionMode = "all" | "any";
 
+export type RuleEventSource = "webhook" | "homeassistant";
+
+export interface RuleEvent {
+  source: RuleEventSource;
+  eventType?: string;
+  entityId?: string;
+}
+
 export interface NormalizedIf {
   mode: ConditionMode;
   clauses: RuleIfClause[];
   pollInterval?: string;
+}
+
+export function normalizeSourceAttachTo(value: string | undefined): SourceAttachTo {
+  if (value === "then") return "action";
+  if (value === "action" || value === "else" || value === "catch" || value === "if") return value;
+  return "if";
 }
 
 export function normalizeIf(ifBlock: RuleIf): NormalizedIf {
@@ -72,6 +86,10 @@ export function serializeIf(
   const key = mode === "any" ? "any" : "all";
   const interval = pollInterval.trim() || "15m";
 
+  if (clauses.length === 0) {
+    return { all: [], pollInterval: interval };
+  }
+
   if (clauses.length === 1 && mode === "all") {
     return { ...clauses[0], pollInterval: interval };
   }
@@ -93,7 +111,7 @@ export function clauseLabel(
     actions?: { id: string; label: string }[];
   }[],
   clause: RuleIfClause | RuleThenClause,
-  side: "if" | "then",
+  side: "if" | "action" | "then",
 ) {
   const integration = integrations.find((item) => item.id === clause.integration);
   if (side === "if") {
@@ -123,7 +141,7 @@ function formatTimeValue(hour: unknown, minute: unknown, timezone: unknown) {
 export function formatClauseConfigSummary(
   integrations: IntegrationMeta[],
   clause: RuleIfClause | RuleThenClause,
-  side: "if" | "then",
+  side: "if" | "action" | "then",
 ): string[] {
   if (side === "if") {
     const ifClause = clause as RuleIfClause;
@@ -165,7 +183,7 @@ export function formatClauseConfigSummary(
 export function formatClauseOverview(
   integrations: IntegrationMeta[],
   clause: RuleIfClause | RuleThenClause,
-  side: "if" | "then",
+  side: "if" | "action" | "then",
 ): string {
   const summary = formatClauseConfigSummary(integrations, clause, side);
   return summary.join(" · ");

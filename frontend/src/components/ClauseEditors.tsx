@@ -488,7 +488,7 @@ export function ThenClauseEditor({
             action: clause.action,
             config: clause.config,
           },
-          "then",
+          "action",
         )
       : "";
 

@@ -3,6 +3,8 @@ import {
   isActionConfigured,
   isActionKind,
   isConditionConfigured,
+  isEventConfigured,
+  isEventKind,
   isTriggerKind,
   type GraphNode,
   type GraphState,
@@ -116,6 +118,16 @@ function pathIsAvailable(path: string, available: Set<string>): boolean {
 
 function requiredFieldIssues(node: GraphNode, integrations: Integration[]): GraphIssue[] {
   const issues: GraphIssue[] = [];
+
+  if (isEventKind(node.kind)) {
+    if (!isEventConfigured(node)) {
+      issues.push({
+        code: "unconfigured",
+        message: "Configure the Event source",
+      });
+    }
+    return issues;
+  }
 
   if (isTriggerKind(node.kind)) {
     if (!isConditionConfigured(node)) {

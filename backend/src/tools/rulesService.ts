@@ -9,13 +9,16 @@ import type { CustomIntegrationSpec } from "../integrations/custom/types.js";
 import { listIntegrationsForApi, reloadCustomIntegrations } from "../integrations/registry.js";
 import {
   deleteRule,
+  isEventRunTrigger,
   listRules,
   loadIntegrationConfig,
   loadRule,
   loadRuns,
+  ruleActionBlock,
   saveIntegrationConfig,
   saveRule,
   type Rule,
+  type RuleEvent,
   type RuleRunTrigger,
 } from "../store/rules.js";
 
@@ -23,30 +26,49 @@ function newId() {
   return randomUUID().replace(/-/g, "").slice(0, 8);
 }
 
+function normalizeEvent(
+  input: Partial<Rule>,
+  existing: Rule | undefined,
+  runTrigger: RuleRunTrigger | undefined,
+): RuleEvent | undefined {
+  if (runTrigger !== "event") return undefined;
+  const raw = input.event ?? existing?.event;
+  const source = raw?.source === "homeassistant" ? "homeassistant" : "webhook";
+  if (source === "homeassistant") {
+    return {
+      source,
+      eventType: String(raw?.eventType ?? "state_changed").trim() || "state_changed",
+      ...(raw?.entityId?.trim() ? { entityId: raw.entityId.trim() } : {}),
+    };
+  }
+  return { source: "webhook" };
+}
+
 function normalizeRunFields(
   input: Partial<Rule>,
   existing?: Rule,
-): Pick<Rule, "enabled" | "runTrigger" | "webhookToken"> {
-  const runTrigger: RuleRunTrigger =
-    input.runTrigger === "webhook"
-      ? "webhook"
-      : input.runTrigger === "timer"
-        ? "timer"
-        : existing?.runTrigger === "webhook"
-          ? "webhook"
-          : "timer";
+): Pick<Rule, "enabled" | "runTrigger" | "webhookToken" | "event"> {
+  const runTrigger: RuleRunTrigger = isEventRunTrigger(input.runTrigger)
+    ? "event"
+    : input.runTrigger === "timer"
+      ? "timer"
+      : isEventRunTrigger(existing?.runTrigger)
+        ? "event"
+        : "timer";
 
   const enabled = input.enabled ?? existing?.enabled ?? true;
   let webhookToken = input.webhookToken ?? existing?.webhookToken;
+  const event = normalizeEvent(input, existing, enabled ? runTrigger : undefined);
 
-  if (enabled && runTrigger === "webhook") {
+  if (enabled && runTrigger === "event" && (event?.source ?? "webhook") === "webhook") {
     webhookToken = webhookToken?.trim() || randomUUID().replace(/-/g, "");
   }
 
   return {
     enabled,
-    runTrigger: enabled ? runTrigger : existing?.runTrigger === "webhook" ? "webhook" : "timer",
+    runTrigger: enabled ? runTrigger : isEventRunTrigger(existing?.runTrigger) ? "event" : "timer",
     ...(webhookToken ? { webhookToken } : {}),
+    ...(event ? { event } : {}),
   };
 }
 
@@ -77,7 +99,8 @@ export async function serviceGetRule(id: string) {
 
 export async function serviceCreateRule(input: Partial<Rule>) {
   if (!input.if) throw new Error("Rule requires an `if` block");
-  if (!input.then) throw new Error("Rule requires a `then` block");
+  const action = ruleActionBlock(input);
+  if (!action) throw new Error("Rule requires an `action` (or legacy `then`) block");
 
   const id = input.id?.trim() || newId();
   if (await loadRule(id)) {
@@ -90,7 +113,7 @@ export async function serviceCreateRule(input: Partial<Rule>) {
     name: input.name?.trim() || "Untitled rule",
     ...runFields,
     if: input.if,
-    then: input.then,
+    action,
     ...(input.else ? { else: input.else } : {}),
     ...(input.catch ? { catch: input.catch } : {}),
   };
@@ -103,11 +126,14 @@ export async function serviceUpdateRule(id: string, patch: Partial<Rule>) {
   if (!existing) throw new Error(`Rule not found: ${id}`);
 
   const runFields = normalizeRunFields({ ...existing, ...patch }, existing);
+  const action = ruleActionBlock({ ...existing, ...patch }) ?? ruleActionBlock(existing);
   return saveRule({
     ...existing,
     ...patch,
     ...runFields,
     id: existing.id,
+    action,
+    then: undefined,
     else: Object.prototype.hasOwnProperty.call(patch, "else") ? patch.else : existing.else,
     catch: Object.prototype.hasOwnProperty.call(patch, "catch") ? patch.catch : existing.catch,
   });

@@ -14,7 +14,7 @@ async function main() {
   await waitForQueueReady(queue);
 
   queue.process(CONCURRENCY, async (job) => {
-    const { ruleId, manual } = job.data;
+    const { ruleId, manual, eventPayload } = job.data;
     console.log(`Processing rule ${ruleId} (job ${job.id}${manual ? ", manual" : ""})`);
 
     // Pick up custom integrations created while the worker is running.
@@ -25,7 +25,15 @@ async function main() {
       throw new Error(`Rule not found: ${ruleId}`);
     }
 
-    return evaluateRule(rule, { manual: Boolean(manual) });
+    return evaluateRule(rule, {
+      manual: Boolean(manual),
+      ...(eventPayload ? { eventPayload } : {}),
+    });
+  });
+
+  const { startHomeAssistantEventListener } = await import("./engine/haEvents.js");
+  startHomeAssistantEventListener().catch((err) => {
+    console.error("Home Assistant event listener failed to start:", err);
   });
 
   console.log(

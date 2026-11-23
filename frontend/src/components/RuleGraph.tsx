@@ -14,9 +14,12 @@ import type { Integration } from "../api/client";
 import {
   nodeColorsForMode,
   allowedChildKinds,
+  graphRoot,
   isActionConfigured,
   isActionKind,
   isConditionConfigured,
+  isEventConfigured,
+  isEventKind,
   isSourceKind,
   isTriggerKind,
   type GraphNode,
@@ -60,7 +63,7 @@ function layoutGraph(
     return { laid: [], links: [], width: 400, height: 240 };
   }
 
-  const root = nodes.find((n) => n.kind === "if" && n.parentId === null) ?? nodes[0];
+  const root = graphRoot(nodes) ?? nodes[0];
   const byParent = new Map<string | null, GraphNode[]>();
   for (const n of nodes) {
     const key = n.parentId;
@@ -72,17 +75,19 @@ function layoutGraph(
   const sortKids = (kids: GraphNode[]) =>
     [...kids].sort((a, b) => {
       const order = (k: GraphNodeKind) =>
-        k === "and" || k === "or"
+        k === "event"
           ? 0
-          : k === "source"
+          : k === "and" || k === "or"
             ? 1
-            : k === "then"
+            : k === "source"
               ? 2
-              : k === "else"
+              : k === "action"
                 ? 3
-                : k === "catch"
+                : k === "else"
                   ? 4
-                  : 5;
+                  : k === "catch"
+                    ? 5
+                    : 6;
       return order(a.kind) - order(b.kind) || a.id.localeCompare(b.id);
     });
 
@@ -155,6 +160,17 @@ function layoutGraph(
 }
 
 function nodeSubtitle(node: GraphNode, integrations: Integration[]): string {
+  if (isEventKind(node.kind)) {
+    if (!isEventConfigured(node)) return "Configure event…";
+    const source = String(node.config.source ?? "webhook");
+    if (source === "homeassistant") {
+      const eventType = String(node.config.eventType ?? "state_changed").trim() || "state_changed";
+      const entityId = String(node.config.entityId ?? "").trim();
+      return entityId ? `HA · ${eventType} · ${entityId}` : `HA · ${eventType}`;
+    }
+    return "HTTP webhook";
+  }
+
   if (isTriggerKind(node.kind)) {
     if (!isConditionConfigured(node)) {
       return isSourceKind(node.kind) ? "Pick a data source…" : "Pick a condition…";
@@ -175,8 +191,8 @@ function nodeSubtitle(node: GraphNode, integrations: Integration[]): string {
     action: node.action!,
     config: node.config,
   };
-  const label = clauseLabel(integrations, clause, "then");
-  const overview = formatClauseOverview(integrations, clause, "then");
+  const label = clauseLabel(integrations, clause, "action");
+  const overview = formatClauseOverview(integrations, clause, "action");
   return overview ? `${label} · ${overview}` : label;
 }
 
@@ -490,7 +506,8 @@ export function RuleGraph({
             const issues: GraphIssue[] = nodeIssues.get(item.id) ?? [];
             const hasIssue = issues.length > 0;
             const addOptions = allowedChildKinds(item.node, state.nodes);
-            const canRemove = !(item.node.kind === "if" && item.node.parentId === null);
+            const rootNode = graphRoot(state.nodes);
+            const canRemove = item.id !== rootNode?.id;
             const title = kindLabel(item.node, state.nodes, colors);
             const subtitle = hasIssue
               ? issues.map((issue) => issue.message).join(" · ")
@@ -662,7 +679,7 @@ export function RuleGraph({
         }}
       >
         <Space size={8} wrap={!isMobile}>
-          {(["if", "and", "or", "source", "then", "else", "catch"] as GraphNodeKind[]).map((kind) => (
+          {(["event", "if", "and", "or", "source", "action", "else", "catch"] as GraphNodeKind[]).map((kind) => (
             <span
               key={kind}
               style={{

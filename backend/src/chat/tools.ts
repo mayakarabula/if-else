@@ -54,7 +54,7 @@ export const chatTools: ChatToolDefinition[] = [
     type: "function",
     function: {
       name: "get_rule",
-      description: "Get one rule by id including full if/then/else/catch.",
+      description: "Get one rule by id including full if/action/else/catch (legacy then accepted).",
       parameters: {
         type: "object",
         properties: { id: { type: "string" } },
@@ -68,16 +68,20 @@ export const chatTools: ChatToolDefinition[] = [
     function: {
       name: "create_rule",
       description:
-        "Create a rule. Pass structured if/then fields and/or a yaml string with the full document. Use list_integrations first for valid ids.",
+        "Create a rule. Pass structured if/action fields and/or a yaml string with the full document. Use list_integrations first for valid ids.",
       parameters: {
         type: "object",
         properties: {
           id: { type: "string" },
           name: { type: "string" },
           enabled: { type: "boolean" },
-          runTrigger: { type: "string", enum: ["timer", "webhook"] },
+          runTrigger: { type: "string", enum: ["timer", "event", "webhook"] },
+          event: {
+            description: "Event source when runTrigger is event: { source: webhook|homeassistant, eventType?, entityId? }",
+          },
           if: { description: "If clause or { all|any: [] }" },
-          then: { description: "Then clause or { all: [] }" },
+          action: { description: "Action clause or { all: [] }" },
+          then: { description: "Legacy alias for action" },
           else: {},
           catch: {},
           yaml: { type: "string", description: "Full YAML/JSON rule document" },
@@ -97,8 +101,10 @@ export const chatTools: ChatToolDefinition[] = [
           id: { type: "string" },
           name: { type: "string" },
           enabled: { type: "boolean" },
-          runTrigger: { type: "string", enum: ["timer", "webhook"] },
+          runTrigger: { type: "string", enum: ["timer", "event", "webhook"] },
+          event: {},
           if: {},
+          action: {},
           then: {},
           else: {},
           catch: {},
@@ -363,10 +369,12 @@ function bodyFromArgs(args: Record<string, unknown>): Partial<Rule> {
   const body: Partial<Rule> = {};
   if (typeof args.name === "string") body.name = args.name;
   if (typeof args.enabled === "boolean") body.enabled = args.enabled;
-  if (args.runTrigger === "timer" || args.runTrigger === "webhook") {
-    body.runTrigger = args.runTrigger;
+  if (args.runTrigger === "timer" || args.runTrigger === "event" || args.runTrigger === "webhook") {
+    body.runTrigger = args.runTrigger === "webhook" ? "event" : args.runTrigger;
   }
+  if (args.event !== undefined) body.event = args.event as Rule["event"];
   if (args.if !== undefined) body.if = args.if as Rule["if"];
+  if (args.action !== undefined) body.action = args.action as Rule["action"];
   if (args.then !== undefined) body.then = args.then as Rule["then"];
   if (args.else !== undefined) body.else = args.else as Rule["else"];
   if (args.catch !== undefined) body.catch = args.catch as Rule["catch"];

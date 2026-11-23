@@ -80,17 +80,29 @@ export interface RuleThenBlock {
 
 export type RuleThen = RuleThenClause | RuleThenBlock;
 
-export type RuleRunTrigger = "timer" | "webhook";
+export type RuleRunTrigger = "timer" | "event";
+
+export type RuleEventSource = "webhook" | "homeassistant";
+
+export interface RuleEvent {
+  source: RuleEventSource;
+  eventType?: string;
+  entityId?: string;
+}
 
 export interface Rule {
   id: string;
   name: string;
   enabled: boolean;
-  /** `timer` (default) polls; `webhook` only runs via `/api/hooks/:token`. */
-  runTrigger?: RuleRunTrigger;
+  /** `timer` (default) polls; `event` runs on webhook / Home Assistant messages. */
+  runTrigger?: RuleRunTrigger | "webhook";
   webhookToken?: string;
+  event?: RuleEvent;
   if: RuleIf;
-  then: RuleThen;
+  /** Preferred success-path actions. Legacy rules may still send `then`. */
+  action?: RuleThen;
+  /** @deprecated Prefer `action`. */
+  then?: RuleThen;
   else?: RuleThen;
   catch?: RuleThen;
   createdAt?: string;

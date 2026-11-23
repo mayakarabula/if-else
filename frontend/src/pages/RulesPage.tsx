@@ -20,7 +20,7 @@ function RuleCard({
   onDelete: (id: string) => void;
 }) {
   const ifClauses = normalizeIf(rule.if).clauses;
-  const thenClauses = normalizeThen(rule.then).all;
+  const thenClauses = normalizeThen(rule.action ?? rule.then).all;
   const elseClauses = normalizeThen(rule.else).all;
   const catchClauses = normalizeThen(rule.catch).all;
 
@@ -38,8 +38,8 @@ function RuleCard({
       : ifNormalized.pollInterval;
   const triggerLabel = !rule.enabled
     ? "Paused"
-    : rule.runTrigger === "webhook"
-      ? "Webhook"
+    : rule.runTrigger === "webhook" || rule.runTrigger === "event"
+      ? "Event"
       : pollLabel
         ? `Timer · ${pollLabel}`
         : "Timer";
