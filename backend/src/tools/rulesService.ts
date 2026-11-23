@@ -160,6 +160,24 @@ export async function serviceUpdateCustomIntegration(input: CustomIntegrationSpe
   return saved;
 }
 
+/** Update display metadata for a custom integration without rewriting actions/triggers. */
+export async function serviceUpdateCustomIntegrationMeta(
+  id: string,
+  patch: { name?: string; icon?: string; color?: string; description?: string },
+) {
+  const existing = await getCustomIntegrationSpec(id);
+  if (!existing) {
+    throw new Error(`Custom integration not found: ${id}`);
+  }
+  return serviceUpdateCustomIntegration({
+    ...existing,
+    ...(typeof patch.name === "string" ? { name: patch.name } : {}),
+    ...(typeof patch.icon === "string" ? { icon: patch.icon } : {}),
+    ...(typeof patch.color === "string" ? { color: patch.color } : {}),
+    ...(typeof patch.description === "string" ? { description: patch.description } : {}),
+  });
+}
+
 export async function serviceDeleteCustomIntegration(id: string) {
   const deleted = await deleteCustomIntegrationSpec(id);
   if (!deleted) throw new Error(`Custom integration not found: ${id}`);

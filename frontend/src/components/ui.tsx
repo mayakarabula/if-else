@@ -2,7 +2,7 @@ import type { Integration } from "../api/client";
 import { Form, Input, InputNumber, Select, Switch, Typography } from "antd";
 import { TemplateTextArea, type ArgumentItem } from "./AvailableVariables";
 
-const icons: Record<string, string> = {
+export const INTEGRATION_ICONS: Record<string, string> = {
   cloud: "☁️",
   send: "✈️",
   clock: "🕘",
@@ -21,6 +21,14 @@ const icons: Record<string, string> = {
   discord: "💬",
   slack: "💬",
 };
+
+/** @deprecated Use INTEGRATION_ICONS */
+const icons = INTEGRATION_ICONS;
+
+export const INTEGRATION_ICON_OPTIONS = Object.entries(INTEGRATION_ICONS).map(([value, glyph]) => ({
+  value,
+  label: `${glyph}  ${value}`,
+}));
 
 /** Shared horizontal form layout so labels and controls line up across the app. */
 export const formLayout = {
