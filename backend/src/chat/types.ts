@@ -23,12 +23,18 @@ export interface ChatMessage {
   }>;
 }
 
+export type ChatProviderId = "openai" | "cursor";
+
 export interface ChatSession {
   id: string;
   createdAt: string;
   updatedAt: string;
   pageContext?: PageContext;
   messages: ChatMessage[];
+  /** Which model backend is driving this conversation. */
+  provider?: ChatProviderId;
+  /** Cursor Cloud Agent id when provider is cursor. */
+  cursorAgentId?: string;
 }
 
 export type ChatMutation = "rules" | "integrations" | "runs";

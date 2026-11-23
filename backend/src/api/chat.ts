@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { chatConfigured, runChatTurn } from "../chat/agent.js";
+import { runChatTurn } from "../chat/agent.js";
+import { chatStatus } from "../chat/providers.js";
 import { clearChatSession, getChatSession, publicMessages } from "../chat/sessions.js";
 import type { PageContext } from "../chat/types.js";
 
@@ -31,8 +32,8 @@ function parsePageContext(value: unknown): PageContext | undefined {
 
 export const chatRouter = Router();
 
-chatRouter.get("/status", (_req, res) => {
-  res.json({ configured: chatConfigured() });
+chatRouter.get("/status", async (_req, res) => {
+  res.json(await chatStatus());
 });
 
 chatRouter.get("/:id", async (req, res) => {
@@ -41,11 +42,14 @@ chatRouter.get("/:id", async (req, res) => {
     res.status(404).json({ error: "Chat session not found" });
     return;
   }
+  const status = await chatStatus();
   res.json({
     sessionId: session.id,
     messages: publicMessages(session),
     pageContext: session.pageContext,
-    configured: chatConfigured(),
+    configured: status.configured,
+    provider: status.provider,
+    providerLabel: status.providerLabel,
   });
 });
 
@@ -56,10 +60,11 @@ chatRouter.delete("/:id", async (req, res) => {
 
 chatRouter.post("/", async (req, res) => {
   try {
-    if (!chatConfigured()) {
+    const status = await chatStatus();
+    if (!status.configured) {
       res.status(503).json({
         error:
-          "Chat is not configured. Set CHAT_API_KEY (OpenAI-compatible) on the backend, optional CHAT_BASE_URL and CHAT_MODEL.",
+          "Chat is not configured. Open Integrations → Agent chat, or set CHAT_API_KEY / CURSOR_API_KEY.",
       });
       return;
     }

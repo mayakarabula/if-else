@@ -167,14 +167,13 @@ export const api = {
       body: JSON.stringify(config),
     }),
   getRuns: () => request<RunLog[]>("/api/runs"),
-  getChatStatus: () => request<{ configured: boolean }>("/api/chat/status"),
+  getChatStatus: () => request<ChatStatus>("/api/chat/status"),
   getChatSession: (id: string) =>
     request<{
       sessionId: string;
       messages: ChatMessage[];
       pageContext?: PageContext;
-      configured: boolean;
-    }>(`/api/chat/${id}`),
+    } & ChatStatus>(`/api/chat/${id}`),
   clearChatSession: (id: string) => request<void>(`/api/chat/${id}`, { method: "DELETE" }),
   sendChat: (input: { sessionId?: string; message: string; pageContext?: PageContext }) =>
     request<ChatTurnResponse>("/api/chat", {
@@ -200,12 +199,18 @@ export interface ChatMessage {
   toolName?: string;
 }
 
-export interface ChatTurnResponse {
+export interface ChatStatus {
+  configured: boolean;
+  provider?: "openai" | "cursor" | null;
+  providerLabel?: string | null;
+  preference?: "auto" | "openai" | "cursor";
+}
+
+export interface ChatTurnResponse extends ChatStatus {
   sessionId: string;
   messages: ChatMessage[];
   mutations: ChatMutation[];
   toolTrace?: Array<{ name: string; ok: boolean }>;
-  configured: boolean;
 }
 
 export function notifyDataChanged(mutations: ChatMutation[]) {
