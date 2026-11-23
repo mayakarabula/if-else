@@ -108,6 +108,23 @@ export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNo
   return [];
 }
 
+/** Attach an empty CATCH under the same parent as THEN when one is missing. */
+export function ensureCatchForThen(state: GraphState): GraphState {
+  const hasThen = state.nodes.some((n) => n.kind === "then");
+  if (!hasThen) return state;
+  if (state.nodes.some((n) => n.kind === "catch")) return state;
+
+  const firstThen = state.nodes.find((n) => n.kind === "then");
+  const root = state.nodes.find((n) => n.kind === "if" && n.parentId === null);
+  const parentId = firstThen?.parentId ?? root?.id;
+  if (!parentId) return state;
+
+  return {
+    ...state,
+    nodes: [...state.nodes, createNode("catch", parentId)],
+  };
+}
+
 export function addChild(state: GraphState, parentId: string, kind: GraphNodeKind): GraphState {
   const parent = state.nodes.find((n) => n.id === parentId);
   if (!parent) return state;
@@ -124,12 +141,22 @@ export function addChild(state: GraphState, parentId: string, kind: GraphNodeKin
   }
 
   const child = createNode(childKind, parentId, slot);
-  return { ...state, nodes: [...state.nodes, child] };
+  let next: GraphState = { ...state, nodes: [...state.nodes, child] };
+  if (childKind === "then") next = ensureCatchForThen(next);
+  return next;
 }
 
 export function removeNode(state: GraphState, nodeId: string): GraphState {
   const root = state.nodes.find((n) => n.kind === "if" && n.parentId === null);
   if (root && root.id === nodeId) return state;
+
+  const target = state.nodes.find((n) => n.id === nodeId);
+  // THEN always keeps a CATCH: don't remove the last catch while a then remains.
+  if (target?.kind === "catch") {
+    const otherCatches = state.nodes.filter((n) => n.kind === "catch" && n.id !== nodeId);
+    const hasThen = state.nodes.some((n) => n.kind === "then");
+    if (hasThen && otherCatches.length === 0) return state;
+  }
 
   const toRemove = new Set<string>();
   const walk = (id: string) => {
@@ -138,10 +165,12 @@ export function removeNode(state: GraphState, nodeId: string): GraphState {
   };
   walk(nodeId);
 
-  return {
+  let next: GraphState = {
     ...state,
     nodes: state.nodes.filter((n) => !toRemove.has(n.id)),
   };
+  // If we removed every then, catch can stay; if then remains somehow, re-ensure.
+  return ensureCatchForThen(next);
 }
 
 export function updateNode(state: GraphState, nodeId: string, patch: Partial<GraphNode>): GraphState {
@@ -350,10 +379,10 @@ export function ruleToGraph(
   placeSources(sourcesByAttach("else"), firstElse?.id ?? lastConditionId!);
   placeSources(sourcesByAttach("catch"), firstCatch?.id ?? lastConditionId!);
 
-  return {
+  return ensureCatchForThen({
     nodes,
     pollInterval: ifBlock.pollInterval ?? "15m",
-  };
+  });
 }
 
 /**
@@ -390,7 +419,7 @@ export function refineGraphSlots(state: GraphState, integrations: Integration[])
     return { ...node, slot: "condition" as const };
   });
 
-  return { ...state, nodes };
+  return ensureCatchForThen({ ...state, nodes });
 }
 
 export function graphValidation(state: GraphState): { ok: boolean; message?: string } {
@@ -400,12 +429,17 @@ export function graphValidation(state: GraphState): { ok: boolean; message?: str
   const thens = state.nodes.filter((n) => n.kind === "then" && isActionConfigured(n));
   const elses = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
   const catches = state.nodes.filter((n) => n.kind === "catch" && isActionConfigured(n));
+  const hasThenNode = state.nodes.some((n) => n.kind === "then");
+  const hasCatchNode = state.nodes.some((n) => n.kind === "catch");
 
   if (conditions.length === 0) {
     return { ok: false, message: "Add at least one If condition." };
   }
   if (thens.length === 0 && elses.length === 0 && catches.length === 0) {
     return { ok: false, message: "Add a Then, Else, or Catch action." };
+  }
+  if (hasThenNode && !hasCatchNode) {
+    return { ok: false, message: "Then requires a Catch action for errors." };
   }
   return { ok: true };
 }
