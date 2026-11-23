@@ -4,6 +4,7 @@ import {
   Button,
   Empty,
   Form,
+  Input,
   List,
   Modal,
   Space,
@@ -12,7 +13,7 @@ import {
   Typography,
   theme,
 } from "antd";
-import { SettingOutlined } from "@ant-design/icons";
+import { SearchOutlined, SettingOutlined } from "@ant-design/icons";
 import { api, type Integration } from "../api/client";
 import { FieldInput, formLayout, IntegrationIcon } from "../components/ui";
 
@@ -444,6 +445,7 @@ export function IntegrationsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   function refresh() {
     setLoading(true);
@@ -473,16 +475,48 @@ export function IntegrationsPage() {
     return () => window.removeEventListener("if-else:data-changed", onDataChanged);
   }, [message]);
 
-  const displayIntegrations = useMemo(
-    () => [AGENT_CHAT_ITEM, ...integrations],
-    [integrations],
-  );
+  const allIntegrations = useMemo(() => {
+    const items = [AGENT_CHAT_ITEM, ...integrations];
+    return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+  }, [integrations]);
+
+  const displayIntegrations = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return allIntegrations;
+
+    return allIntegrations.filter((integration) => {
+      const haystack = [
+        integration.id,
+        integration.name,
+        integrationCopy[integration.id] ?? "",
+        ...(integration.triggers ?? []).flatMap((item) => [item.id, item.label, item.description]),
+        ...(integration.actions ?? []).flatMap((item) => [item.id, item.label, item.description]),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [allIntegrations, query]);
 
   const editing = useMemo(
-    () => displayIntegrations.find((item) => item.id === editingId) ?? null,
-    [editingId, displayIntegrations],
+    () => allIntegrations.find((item) => item.id === editingId) ?? null,
+    [editingId, allIntegrations],
   );
-  const editingFields = editing ? integrationFields[editing.id] ?? [] : [];
+  const editingFields = useMemo(() => {
+    if (!editing) return [];
+    const fields = integrationFields[editing.id] ?? [];
+    if (editing.id !== "agentchat") return fields;
+
+    const provider = String(config.agentchat?.provider ?? "auto");
+    return fields.filter((field) => {
+      if (field.key === "provider") return true;
+      const isOpenAi = field.key.startsWith("openai");
+      const isCursor = field.key.startsWith("cursor");
+      if (provider === "openai") return isOpenAi;
+      if (provider === "cursor") return isCursor;
+      return true;
+    });
+  }, [editing, config.agentchat?.provider]);
 
   async function handleSave() {
     setSaving(true);
@@ -517,14 +551,28 @@ export function IntegrationsPage() {
         Everything you can use in If / Then rules. Secrets are stored in config/integrations.yaml.
       </Typography.Paragraph>
 
+      <Input
+        allowClear
+        prefix={<SearchOutlined />}
+        placeholder="Search integrations…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        style={{ maxWidth: 420, marginBottom: 16 }}
+      />
+
       {displayIntegrations.length === 0 ? (
-        <Empty description="No integrations registered." />
+        <Empty
+          description={
+            query.trim()
+              ? `No integrations match “${query.trim()}”.`
+              : "No integrations registered."
+          }
+        />
       ) : (
         <List
           itemLayout="horizontal"
           dataSource={displayIntegrations}
           style={{
-            marginTop: 8,
             background: token.colorBgContainer,
             border: `1px solid ${token.colorBorderSecondary}`,
             borderRadius: token.borderRadiusLG,
@@ -571,7 +619,11 @@ export function IntegrationsPage() {
                   <FieldInput
                     key={field.key}
                     field={field}
-                    value={config[editing.id]?.[field.key]}
+                    value={
+                      editing.id === "agentchat" && field.key === "provider"
+                        ? config.agentchat?.provider ?? "auto"
+                        : config[editing.id]?.[field.key]
+                    }
                     onChange={(value) =>
                       setConfig((prev) => ({
                         ...prev,
