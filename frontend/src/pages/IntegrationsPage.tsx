@@ -35,7 +35,7 @@ const integrationFields: Record<
       type: "select",
       required: false,
       options: [
-        { value: "auto", label: "Auto (OpenAI if set, else Cursor)" },
+        { value: "auto", label: "Auto (Cursor if CURSOR_API_KEY set, else OpenAI)" },
         { value: "openai", label: "OpenAI-compatible" },
         { value: "cursor", label: "Cursor Agent" },
       ],
@@ -63,9 +63,9 @@ const integrationFields: Record<
     },
     {
       key: "cursorApiKey",
-      label: "Cursor API key",
+      label: "Cursor API key override",
       type: "text",
-      placeholder: "Falls back to Cursor integration / CURSOR_API_KEY",
+      placeholder: "Optional — defaults to CURSOR_API_KEY",
       required: false,
     },
     {
@@ -298,7 +298,7 @@ const AGENT_CHAT_ITEM: Integration = {
 
 const integrationCopy: Record<string, string> = {
   agentchat:
-    "Power the floating in-app agent. Choose OpenAI-compatible chat completions and/or Cursor Cloud Agents. Secrets can also come from env.",
+    "Power the floating in-app agent. Cursor uses CURSOR_API_KEY by default; OpenAI-compatible keys are optional. Configure provider and overrides here.",
   time: "Poll on an interval (Time → Every) or fire once per day at a chosen time and timezone.",
   weather:
     "Open-Meteo weather conditions and data — no API key. Pick a place when you build a rule.",
@@ -326,18 +326,6 @@ function configStatus(
   integrationId: string,
   config: Record<string, Record<string, unknown>>,
 ): "ready" | "needs_setup" | "no_setup" {
-  if (integrationId === "agentchat") {
-    const chat = config.agentchat ?? {};
-    const provider = String(chat.provider ?? "auto");
-    const hasOpenAi = Boolean(String(chat.openaiApiKey ?? "").trim());
-    const hasCursor = Boolean(
-      String(chat.cursorApiKey ?? "").trim() || String(config.cursor?.apiKey ?? "").trim(),
-    );
-    if (provider === "openai") return hasOpenAi ? "ready" : "needs_setup";
-    if (provider === "cursor") return hasCursor ? "ready" : "needs_setup";
-    return hasOpenAi || hasCursor ? "ready" : "needs_setup";
-  }
-
   const fields = integrationFields[integrationId];
   if (!fields || fields.length === 0) return "no_setup";
   const values = config[integrationId] ?? {};
@@ -365,16 +353,23 @@ function IntegrationListItem({
   integration,
   config,
   onConfigure,
+  agentChatReady,
 }: {
   integration: Integration;
   config: Record<string, Record<string, unknown>>;
   onConfigure: () => void;
+  agentChatReady?: boolean | null;
 }) {
   const conditions = (integration.triggers ?? []).filter((item) => (item.kind ?? "condition") !== "data");
   const sources = (integration.triggers ?? []).filter((item) => item.kind === "data");
   const actions = integration.actions ?? [];
   const fields = integrationFields[integration.id] ?? [];
-  const status = configStatus(integration.id, config);
+  const status =
+    integration.id === "agentchat"
+      ? agentChatReady
+        ? "ready"
+        : "needs_setup"
+      : configStatus(integration.id, config);
   const description = integrationCopy[integration.id] ?? capabilitySummary(integration);
 
   return (
@@ -446,13 +441,15 @@ export function IntegrationsPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [agentChatReady, setAgentChatReady] = useState<boolean | null>(null);
 
   function refresh() {
     setLoading(true);
-    Promise.all([api.getIntegrations(), api.getIntegrationConfig()])
-      .then(([integrationsData, configData]) => {
+    Promise.all([api.getIntegrations(), api.getIntegrationConfig(), api.getChatStatus()])
+      .then(([integrationsData, configData, chatStatus]) => {
         setIntegrations(integrationsData);
         setConfig(configData);
+        setAgentChatReady(chatStatus.configured);
       })
       .catch((err) => {
         message.error(err instanceof Error ? err.message : "Failed to load integrations");
@@ -583,6 +580,7 @@ export function IntegrationsPage() {
               key={integration.id}
               integration={integration}
               config={config}
+              agentChatReady={agentChatReady}
               onConfigure={() => setEditingId(integration.id)}
             />
           )}

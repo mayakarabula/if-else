@@ -226,11 +226,11 @@ export function AgentChatPanel() {
             message="Agent chat needs setup"
             description={
               <span>
-                Configure a provider under{" "}
+                Set <code>CURSOR_API_KEY</code> (used by default for Cursor) or configure{" "}
                 <Link to="/integrations" onClick={() => setOpen(false)}>
                   Integrations → Agent chat
                 </Link>
-                . OpenAI-compatible and Cursor Agent are supported.
+                .
               </span>
             }
           />
