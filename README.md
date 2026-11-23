@@ -4,6 +4,8 @@ Simple if-this-then-that automations with a React UI and Node backend.
 
 Rule setup uses a **d3 flow graph**: start from an **IF** node, then branch with **AND** / **OR** conditions and **THEN** / **ELSE** / **CATCH** actions.
 
+**Wiki** (VitePress): [`wiki/`](./wiki) — run `npm run wiki` → http://localhost:5174
+
 ## Architecture
 
 - **api** — Express HTTP API + scheduler that *enqueues* due rules
