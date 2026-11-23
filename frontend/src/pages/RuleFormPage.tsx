@@ -162,7 +162,6 @@ export function RuleFormPage() {
   function handleAddChild(parentId: string, kind: GraphNodeKind) {
     setGraph((current) => {
       const next = addChild(current, parentId, kind);
-      // Prefer selecting the requested kind (ACTION may also auto-add CATCH).
       const added =
         next.nodes.find(
           (n) => n.kind === kind && !current.nodes.some((c) => c.id === n.id),
@@ -288,8 +287,8 @@ export function RuleFormPage() {
       </Typography.Title>
       <Typography.Paragraph type="secondary" style={{ maxWidth: 640 }}>
         Timer rules start from IF. Event rules start from EVENT (webhook or Home Assistant), with
-        optional IF filters and ACTION / ELSE / CATCH. Catch hangs under Action. Use the gear on a
-        node to configure it.
+        optional IF filters and ACTION / ELSE / CATCH (Catch is optional). Use the gear on a node to
+        configure it.
       </Typography.Paragraph>
 
       <div
