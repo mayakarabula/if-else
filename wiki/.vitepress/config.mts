@@ -4,7 +4,9 @@ export default defineConfig({
   title: "if-else",
   description: "If-this-then-that automations — project wiki",
   cleanUrls: true,
-  lastUpdated: true,
+  // Docker Compose mounts only ./wiki (no .git / no git binary on Alpine).
+  // Keep this off so VitePress does not spawn `git` for timestamps.
+  lastUpdated: false,
   ignoreDeadLinks: [
     /^https?:\/\/localhost/,
   ],
