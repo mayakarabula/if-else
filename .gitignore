@@ -4,6 +4,9 @@ config/
 # dependencies
 backend/node_modules/
 frontend/node_modules/
+wiki/node_modules/
+wiki/.vitepress/cache/
+wiki/.vitepress/dist/
 
 # build
 backend/dist/
