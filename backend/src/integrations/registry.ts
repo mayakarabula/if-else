@@ -19,6 +19,8 @@ import { appendRow as sheetsAppendRow, updateRange as sheetsUpdateRange } from "
 import { fetchRange as sheetsFetchRange } from "./googlesheets/triggers.js";
 import { appendParagraph as notionAppendParagraph, createPage as notionCreatePage } from "./notion/actions.js";
 import { launchCloudAgent } from "./cursor/actions.js";
+import { runScriptAction } from "./script/actions.js";
+import { captureScript } from "./script/triggers.js";
 
 export const integrations: IntegrationDefinition[] = [
   {
@@ -101,6 +103,14 @@ export const integrations: IntegrationDefinition[] = [
     icon: "cursor",
     color: "#F54E00",
     actions: [launchCloudAgent],
+  },
+  {
+    id: "script",
+    name: "Shell script",
+    icon: "script",
+    color: "#475569",
+    triggers: [captureScript],
+    actions: [runScriptAction],
   },
 ];
 
