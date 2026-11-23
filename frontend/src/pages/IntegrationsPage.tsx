@@ -359,7 +359,7 @@ export function IntegrationsPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
     setLoading(true);
     Promise.all([api.getIntegrations(), api.getIntegrationConfig()])
       .then(([integrationsData, configData]) => {
@@ -370,6 +370,21 @@ export function IntegrationsPage() {
         message.error(err instanceof Error ? err.message : "Failed to load integrations");
       })
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    refresh();
+  }, [message]);
+
+  useEffect(() => {
+    function onDataChanged(event: Event) {
+      const detail = (event as CustomEvent<{ mutations?: string[] }>).detail;
+      if (detail?.mutations?.includes("integrations")) {
+        refresh();
+      }
+    }
+    window.addEventListener("if-else:data-changed", onDataChanged);
+    return () => window.removeEventListener("if-else:data-changed", onDataChanged);
   }, [message]);
 
   const editing = useMemo(

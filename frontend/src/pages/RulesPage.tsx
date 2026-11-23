@@ -141,6 +141,17 @@ export function RulesPage() {
     refresh();
   }, []);
 
+  useEffect(() => {
+    function onDataChanged(event: Event) {
+      const detail = (event as CustomEvent<{ mutations?: string[] }>).detail;
+      if (detail?.mutations?.includes("rules")) {
+        void refresh();
+      }
+    }
+    window.addEventListener("if-else:data-changed", onDataChanged);
+    return () => window.removeEventListener("if-else:data-changed", onDataChanged);
+  }, []);
+
   async function handleToggle(id: string) {
     await api.toggleRule(id);
     await refresh();

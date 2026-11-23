@@ -11,6 +11,23 @@ Rule setup uses a **d3 flow graph**: start from an **IF** node, then branch with
 - **redis** — job queue backing store
 - **frontend** — Vite + React UI
 - **CLI / MCP** — create, read, list, update, and delete rules from the terminal or chat (same YAML store as the UI)
+- **Agent chat** — floating assistant on authenticated pages; knows the current route and can manage rules/integrations via tools
+
+## Agent chat (in-app)
+
+A chat drawer is available on every signed-in page. It sends the current path/page (and rule id when editing) so the model can create or edit rules and update integration settings in a multi-turn conversation.
+
+Configure an OpenAI-compatible Chat Completions endpoint on the backend:
+
+```bash
+# backend/.env
+CHAT_API_KEY=sk-...
+# optional
+# CHAT_BASE_URL=https://api.openai.com/v1
+# CHAT_MODEL=gpt-4o-mini
+```
+
+Without `CHAT_API_KEY` (or `OPENAI_API_KEY`), the UI still shows the panel but explains that chat is not configured.
 
 ## CLI
 
