@@ -1,0 +1,143 @@
+import { randomUUID } from "node:crypto";
+import yaml from "js-yaml";
+import { listIntegrationsForApi } from "../integrations/registry.js";
+import {
+  deleteRule,
+  listRules,
+  loadIntegrationConfig,
+  loadRule,
+  loadRuns,
+  saveRule,
+  type Rule,
+  type RuleRunTrigger,
+} from "../store/rules.js";
+
+function newId() {
+  return randomUUID().replace(/-/g, "").slice(0, 8);
+}
+
+function normalizeRunFields(
+  input: Partial<Rule>,
+  existing?: Rule,
+): Pick<Rule, "enabled" | "runTrigger" | "webhookToken"> {
+  const runTrigger: RuleRunTrigger =
+    input.runTrigger === "webhook"
+      ? "webhook"
+      : input.runTrigger === "timer"
+        ? "timer"
+        : existing?.runTrigger === "webhook"
+          ? "webhook"
+          : "timer";
+
+  const enabled = input.enabled ?? existing?.enabled ?? true;
+  let webhookToken = input.webhookToken ?? existing?.webhookToken;
+
+  if (enabled && runTrigger === "webhook") {
+    webhookToken = webhookToken?.trim() || randomUUID().replace(/-/g, "");
+  }
+
+  return {
+    enabled,
+    runTrigger: enabled ? runTrigger : existing?.runTrigger === "webhook" ? "webhook" : "timer",
+    ...(webhookToken ? { webhookToken } : {}),
+  };
+}
+
+export function parseRuleDocument(raw: string): Partial<Rule> {
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error("Rule document is empty");
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return JSON.parse(trimmed) as Partial<Rule>;
+  }
+
+  const loaded = yaml.load(trimmed);
+  if (!loaded || typeof loaded !== "object" || Array.isArray(loaded)) {
+    throw new Error("Rule document must be a YAML/JSON object");
+  }
+  return loaded as Partial<Rule>;
+}
+
+export async function serviceListRules() {
+  return listRules();
+}
+
+export async function serviceGetRule(id: string) {
+  const rule = await loadRule(id);
+  if (!rule) throw new Error(`Rule not found: ${id}`);
+  return rule;
+}
+
+export async function serviceCreateRule(input: Partial<Rule>) {
+  if (!input.if) throw new Error("Rule requires an `if` block");
+  if (!input.then) throw new Error("Rule requires a `then` block");
+
+  const id = input.id?.trim() || newId();
+  if (await loadRule(id)) {
+    throw new Error(`Rule already exists: ${id}`);
+  }
+
+  const runFields = normalizeRunFields(input);
+  const rule: Rule = {
+    id,
+    name: input.name?.trim() || "Untitled rule",
+    ...runFields,
+    if: input.if,
+    then: input.then,
+    ...(input.else ? { else: input.else } : {}),
+    ...(input.catch ? { catch: input.catch } : {}),
+  };
+
+  return saveRule(rule);
+}
+
+export async function serviceUpdateRule(id: string, patch: Partial<Rule>) {
+  const existing = await loadRule(id);
+  if (!existing) throw new Error(`Rule not found: ${id}`);
+
+  const runFields = normalizeRunFields({ ...existing, ...patch }, existing);
+  return saveRule({
+    ...existing,
+    ...patch,
+    ...runFields,
+    id: existing.id,
+    else: Object.prototype.hasOwnProperty.call(patch, "else") ? patch.else : existing.else,
+    catch: Object.prototype.hasOwnProperty.call(patch, "catch") ? patch.catch : existing.catch,
+  });
+}
+
+export async function serviceDeleteRule(id: string) {
+  const existing = await loadRule(id);
+  if (!existing) throw new Error(`Rule not found: ${id}`);
+  await deleteRule(id);
+  return { deleted: id };
+}
+
+export async function serviceSetEnabled(id: string, enabled: boolean) {
+  const existing = await loadRule(id);
+  if (!existing) throw new Error(`Rule not found: ${id}`);
+  return saveRule({ ...existing, enabled });
+}
+
+export async function serviceListIntegrations() {
+  return listIntegrationsForApi();
+}
+
+export async function serviceGetIntegrationConfig() {
+  return loadIntegrationConfig();
+}
+
+export async function serviceListRuns(limit = 20) {
+  const runs = await loadRuns();
+  return runs.slice(0, Math.max(1, Math.min(limit, 100)));
+}
+
+export function ruleSummary(rule: Rule) {
+  return {
+    id: rule.id,
+    name: rule.name,
+    enabled: rule.enabled,
+    runTrigger: rule.enabled ? rule.runTrigger ?? "timer" : "off",
+    updatedAt: rule.updatedAt,
+  };
+}

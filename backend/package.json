@@ -9,10 +9,13 @@
     "start": "tsx src/index.ts",
     "start:api": "tsx src/index.ts",
     "start:worker": "tsx src/worker.ts",
+    "cli": "tsx src/cli.ts",
+    "mcp": "tsx src/mcp/server.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "bcryptjs": "^3.0.3",
     "bee-queue": "^2.0.0",
     "bull-arena": "^4.10.0",
