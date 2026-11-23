@@ -502,7 +502,21 @@ export function IntegrationsPage() {
     () => allIntegrations.find((item) => item.id === editingId) ?? null,
     [editingId, allIntegrations],
   );
-  const editingFields = editing ? integrationFields[editing.id] ?? [] : [];
+  const editingFields = useMemo(() => {
+    if (!editing) return [];
+    const fields = integrationFields[editing.id] ?? [];
+    if (editing.id !== "agentchat") return fields;
+
+    const provider = String(config.agentchat?.provider ?? "auto");
+    return fields.filter((field) => {
+      if (field.key === "provider") return true;
+      const isOpenAi = field.key.startsWith("openai");
+      const isCursor = field.key.startsWith("cursor");
+      if (provider === "openai") return isOpenAi;
+      if (provider === "cursor") return isCursor;
+      return true;
+    });
+  }, [editing, config.agentchat?.provider]);
 
   async function handleSave() {
     setSaving(true);
@@ -605,7 +619,11 @@ export function IntegrationsPage() {
                   <FieldInput
                     key={field.key}
                     field={field}
-                    value={config[editing.id]?.[field.key]}
+                    value={
+                      editing.id === "agentchat" && field.key === "provider"
+                        ? config.agentchat?.provider ?? "auto"
+                        : config[editing.id]?.[field.key]
+                    }
                     onChange={(value) =>
                       setConfig((prev) => ({
                         ...prev,
