@@ -14,7 +14,7 @@ import {
   theme,
 } from "antd";
 import { SearchOutlined, SettingOutlined } from "@ant-design/icons";
-import { api, type Integration } from "../api/client";
+import { api, type ChatStatus, type Integration } from "../api/client";
 import { FieldInput, formLayout, IntegrationIcon } from "../components/ui";
 
 const integrationFields: Record<
@@ -353,12 +353,12 @@ function IntegrationListItem({
   integration,
   config,
   onConfigure,
-  agentChatReady,
+  chatStatus,
 }: {
   integration: Integration;
   config: Record<string, Record<string, unknown>>;
   onConfigure: () => void;
-  agentChatReady?: boolean | null;
+  chatStatus?: ChatStatus | null;
 }) {
   const conditions = (integration.triggers ?? []).filter((item) => (item.kind ?? "condition") !== "data");
   const sources = (integration.triggers ?? []).filter((item) => item.kind === "data");
@@ -366,11 +366,21 @@ function IntegrationListItem({
   const fields = integrationFields[integration.id] ?? [];
   const status =
     integration.id === "agentchat"
-      ? agentChatReady
-        ? "ready"
-        : "needs_setup"
+      ? chatStatus == null
+        ? "pending"
+        : chatStatus.configured
+          ? "ready"
+          : "needs_setup"
       : configStatus(integration.id, config);
   const description = integrationCopy[integration.id] ?? capabilitySummary(integration);
+  const agentChatHint =
+    integration.id === "agentchat" && status === "needs_setup"
+      ? "Set CURSOR_API_KEY in backend/.env (default), or add an OpenAI key here."
+      : integration.id === "agentchat" && status === "ready" && chatStatus?.cursorEnvConfigured
+        ? "Using CURSOR_API_KEY"
+        : integration.id === "agentchat" && status === "ready" && chatStatus?.providerLabel
+          ? `Using ${chatStatus.providerLabel}`
+          : null;
 
   return (
     <List.Item
@@ -397,6 +407,11 @@ function IntegrationListItem({
             </Typography.Text>
             {status === "ready" && <Tag color="success">Configured</Tag>}
             {status === "needs_setup" && <Tag color="warning">Needs setup</Tag>}
+            {agentChatHint && (
+              <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
+                {agentChatHint}
+              </Typography.Text>
+            )}
             {status === "no_setup" && (
               <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
                 {capabilitySummary(integration)}
@@ -441,15 +456,15 @@ export function IntegrationsPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [agentChatReady, setAgentChatReady] = useState<boolean | null>(null);
+  const [chatStatus, setChatStatus] = useState<ChatStatus | null>(null);
 
   function refresh() {
     setLoading(true);
     Promise.all([api.getIntegrations(), api.getIntegrationConfig(), api.getChatStatus()])
-      .then(([integrationsData, configData, chatStatus]) => {
+      .then(([integrationsData, configData, nextChatStatus]) => {
         setIntegrations(integrationsData);
         setConfig(configData);
-        setAgentChatReady(chatStatus.configured);
+        setChatStatus(nextChatStatus);
       })
       .catch((err) => {
         message.error(err instanceof Error ? err.message : "Failed to load integrations");
@@ -580,7 +595,7 @@ export function IntegrationsPage() {
               key={integration.id}
               integration={integration}
               config={config}
-              agentChatReady={agentChatReady}
+              chatStatus={chatStatus}
               onConfigure={() => setEditingId(integration.id)}
             />
           )}
@@ -603,6 +618,11 @@ export function IntegrationsPage() {
             <Typography.Paragraph type="secondary">
               {integrationCopy[editing.id] ?? "Update connection settings for this integration."}
             </Typography.Paragraph>
+            {editing.id === "agentchat" && chatStatus?.cursorEnvConfigured && (
+              <Typography.Paragraph type="secondary" style={{ marginTop: -8 }}>
+                <code>CURSOR_API_KEY</code> is set in the backend environment.
+              </Typography.Paragraph>
+            )}
             <Form
               layout="horizontal"
               labelAlign="left"
