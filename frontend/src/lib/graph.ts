@@ -1,4 +1,5 @@
-import type { Integration, RuleEvent, RuleEventSource } from "../api/client";
+import type { Integration, RuleEvent, RuleEventSource, RuleFilter } from "../api/client";
+import { filterFromNodeConfig, isFilterConfigured as filterConfigReady } from "./filters";
 import {
   normalizeIf,
   normalizeSourceAttachTo,
@@ -15,6 +16,7 @@ import {
 
 export type GraphNodeKind =
   | "event"
+  | "filter"
   | "if"
   | "and"
   | "or"
@@ -54,7 +56,12 @@ export function createNode(
     integration: null,
     trigger: null,
     action: null,
-    config: kind === "event" ? { source: "webhook" } : {},
+    config:
+      kind === "event"
+        ? { source: "webhook" }
+        : kind === "filter"
+          ? { path: "event.entityId", op: "eq", value: "" }
+          : {},
     slot,
   };
 }
@@ -68,6 +75,10 @@ export function createEmptyGraph(): GraphState {
 
 export function isEventKind(kind: GraphNodeKind): boolean {
   return kind === "event";
+}
+
+export function isFilterKind(kind: GraphNodeKind): boolean {
+  return kind === "filter";
 }
 
 export function isConditionKind(kind: GraphNodeKind): boolean {
@@ -98,6 +109,10 @@ export function isActionConfigured(node: GraphNode): boolean {
 export function isEventConfigured(node: GraphNode): boolean {
   const source = String(node.config.source ?? "");
   return source === "webhook" || source === "homeassistant";
+}
+
+export function isFilterNodeConfigured(node: GraphNode): boolean {
+  return isFilterKind(node.kind) && filterConfigReady(node.config);
 }
 
 export function childrenOf(nodes: GraphNode[], parentId: string): GraphNode[] {
@@ -192,14 +207,18 @@ export function stripEventRoot(state: GraphState): GraphState {
 
 export function allowedChildKinds(node: GraphNode, _nodes: GraphNode[]): GraphNodeKind[] {
   if (isEventKind(node.kind)) {
-    const kinds: GraphNodeKind[] = ["action"];
+    const kinds: GraphNodeKind[] = ["filter", "action"];
     const hasIf = _nodes.some((n) => n.kind === "if");
-    if (!hasIf) kinds.unshift("if");
+    if (!hasIf) kinds.splice(1, 0, "if");
     return kinds;
   }
 
+  if (isFilterKind(node.kind)) {
+    return ["filter", "action"];
+  }
+
   if (isConditionKind(node.kind)) {
-    const kinds: GraphNodeKind[] = ["and", "or", "source", "action"];
+    const kinds: GraphNodeKind[] = ["and", "or", "source", "filter", "action"];
     const hasElse = _nodes.some((n) => n.kind === "else");
     if (!hasElse) kinds.push("else");
     const hasCatch = _nodes.some((n) => n.kind === "catch");
@@ -294,6 +313,7 @@ export function graphToRulePayload(state: GraphState): {
   else?: RuleThen;
   catch?: RuleThen;
   event?: RuleEvent;
+  filters?: RuleFilter[];
 } {
   const conditionNodes = state.nodes.filter(
     (n) => isConditionKind(n.kind) && isConditionConfigured(n),
@@ -319,6 +339,11 @@ export function graphToRulePayload(state: GraphState): {
       return clause;
     }),
   ];
+
+  const filters = state.nodes
+    .filter((n) => isFilterNodeConfigured(n))
+    .map((n) => filterFromNodeConfig(n.config))
+    .filter((item): item is RuleFilter => Boolean(item));
 
   const actionNodes = state.nodes.filter((n) => n.kind === "action" && isActionConfigured(n));
   const elseNodes = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
@@ -361,6 +386,7 @@ export function graphToRulePayload(state: GraphState): {
     ...(elseBlock ? { else: elseBlock } : {}),
     ...(catchBlock ? { catch: catchBlock } : {}),
     ...(event ? { event } : {}),
+    filters,
   };
 }
 
@@ -379,6 +405,7 @@ export function ruleToGraph(
     catch?: RuleThen;
     runTrigger?: string;
     event?: RuleEvent;
+    filters?: RuleFilter[];
   },
   integrations: Integration[] = [],
 ): GraphState {
@@ -388,6 +415,7 @@ export function ruleToGraph(
   const catchBlock = normalizeThen(rule.catch);
   const mode = ifBlock.mode;
   const isEventRule = rule.runTrigger === "event" || rule.runTrigger === "webhook";
+  const filters = Array.isArray(rule.filters) ? rule.filters : [];
 
   const conditionClauses = ifBlock.clauses.filter((c) => !isDataClause(c, integrations));
   const sourceClauses = ifBlock.clauses.filter((c) => isDataClause(c, integrations));
@@ -438,7 +466,21 @@ export function ruleToGraph(
   if (!attachPoint) {
     nodes.push(createNode("if", null, "condition"));
   }
-  const actionParent = lastConditionId ?? eventId ?? nodes[0].id;
+
+  const filterParent = eventId ?? lastConditionId ?? nodes[0]?.id ?? null;
+  let lastFilterId: string | null = null;
+  for (const filter of filters) {
+    const node = createNode("filter", filterParent);
+    node.config = {
+      path: filter.path,
+      op: filter.op,
+      value: filter.value ?? "",
+    };
+    nodes.push(node);
+    lastFilterId = node.id;
+  }
+
+  const actionParent = lastConditionId ?? lastFilterId ?? eventId ?? nodes[0].id;
 
   actionBlock.all.forEach((clause, index) => {
     const parent =
@@ -560,9 +602,14 @@ export function graphValidation(state: GraphState): { ok: boolean; message?: str
   const actions = state.nodes.filter((n) => n.kind === "action" && isActionConfigured(n));
   const elses = state.nodes.filter((n) => n.kind === "else" && isActionConfigured(n));
   const catches = state.nodes.filter((n) => n.kind === "catch" && isActionConfigured(n));
+  const incompleteFilter = state.nodes.find((n) => isFilterKind(n.kind) && !isFilterNodeConfigured(n));
 
   if (eventNode && !isEventConfigured(eventNode)) {
     return { ok: false, message: "Configure the Event source (webhook or Home Assistant)." };
+  }
+
+  if (incompleteFilter) {
+    return { ok: false, message: "Configure each Filter (path, operator, value)." };
   }
 
   if (!eventNode && conditions.length === 0) {
@@ -577,6 +624,7 @@ export function graphValidation(state: GraphState): { ok: boolean; message?: str
 
 export const NODE_COLORS: Record<GraphNodeKind, { fill: string; stroke: string; label: string }> = {
   event: { fill: "#3f4f6a", stroke: "#2f3c52", label: "EVENT" },
+  filter: { fill: "#5c4a32", stroke: "#463724", label: "FILTER" },
   if: { fill: "#2a261f", stroke: "#2a261f", label: "IF" },
   and: { fill: "#a07a3a", stroke: "#8a6830", label: "AND" },
   or: { fill: "#5b7c99", stroke: "#4a6780", label: "OR" },
@@ -589,6 +637,7 @@ export const NODE_COLORS: Record<GraphNodeKind, { fill: string; stroke: string; 
 /** Dark-mode accents stay in the same warm family but stay readable on espresso parchment. */
 export const NODE_COLORS_DARK: Record<GraphNodeKind, { fill: string; stroke: string; label: string }> = {
   event: { fill: "#8fa3c4", stroke: "#6f86a8", label: "EVENT" },
+  filter: { fill: "#c4a882", stroke: "#a88860", label: "FILTER" },
   if: { fill: "#d9cdb6", stroke: "#cfc3a8", label: "IF" },
   and: { fill: "#c4a05a", stroke: "#a88840", label: "AND" },
   or: { fill: "#7aa2d4", stroke: "#5b7c99", label: "OR" },

@@ -90,6 +90,25 @@ export interface RuleEvent {
   entityId?: string;
 }
 
+export type RuleFilterOp =
+  | "eq"
+  | "neq"
+  | "contains"
+  | "starts_with"
+  | "ends_with"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "exists"
+  | "not_exists";
+
+export interface RuleFilter {
+  path: string;
+  op: RuleFilterOp;
+  value?: string;
+}
+
 export interface Rule {
   id: string;
   name: string;
@@ -98,6 +117,8 @@ export interface Rule {
   runTrigger?: RuleRunTrigger | "webhook";
   webhookToken?: string;
   event?: RuleEvent;
+  /** Optional path filters (AND), useful for EVENT payloads. */
+  filters?: RuleFilter[];
   if: RuleIf;
   /** Preferred success-path actions. Legacy rules may still send `then`. */
   action?: RuleThen;

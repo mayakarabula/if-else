@@ -79,6 +79,10 @@ export const chatTools: ChatToolDefinition[] = [
           event: {
             description: "Event source when runTrigger is event: { source: webhook|homeassistant, eventType?, entityId? }",
           },
+          filters: {
+            description:
+              "Optional path filters (AND): [{ path, op: eq|neq|contains|starts_with|ends_with|gt|gte|lt|lte|exists|not_exists, value? }]",
+          },
           if: { description: "If clause or { all|any: [] }" },
           action: { description: "Action clause or { all: [] }" },
           then: { description: "Legacy alias for action" },
@@ -103,6 +107,7 @@ export const chatTools: ChatToolDefinition[] = [
           enabled: { type: "boolean" },
           runTrigger: { type: "string", enum: ["timer", "event", "webhook"] },
           event: {},
+          filters: {},
           if: {},
           action: {},
           then: {},
@@ -373,6 +378,7 @@ function bodyFromArgs(args: Record<string, unknown>): Partial<Rule> {
     body.runTrigger = args.runTrigger === "webhook" ? "event" : args.runTrigger;
   }
   if (args.event !== undefined) body.event = args.event as Rule["event"];
+  if (args.filters !== undefined) body.filters = args.filters as Rule["filters"];
   if (args.if !== undefined) body.if = args.if as Rule["if"];
   if (args.action !== undefined) body.action = args.action as Rule["action"];
   if (args.then !== undefined) body.then = args.then as Rule["then"];

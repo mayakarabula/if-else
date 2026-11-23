@@ -48,6 +48,10 @@ const ruleBodySchema = {
     .unknown()
     .optional()
     .describe("Event source: { source: webhook|homeassistant, eventType?, entityId? }"),
+  filters: z
+    .unknown()
+    .optional()
+    .describe("Optional path filters (AND): [{ path, op, value? }]"),
   if: z
     .unknown()
     .optional()
@@ -81,6 +85,7 @@ function bodyFromArgs(args: Record<string, unknown>): Partial<Rule> {
   }
   if (typeof args.webhookToken === "string") body.webhookToken = args.webhookToken;
   if (args.event !== undefined) body.event = args.event as Rule["event"];
+  if (args.filters !== undefined) body.filters = args.filters as Rule["filters"];
   if (args.if !== undefined) body.if = args.if as Rule["if"];
   if (args.action !== undefined) body.action = args.action as Rule["action"];
   if (args.then !== undefined) body.then = args.then as Rule["then"];

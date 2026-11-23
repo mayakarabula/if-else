@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Button, Empty, Input, Modal, Radio, Space, Typography } from "antd";
+import { AutoComplete, Button, Empty, Input, Modal, Radio, Select, Space, Typography } from "antd";
 import { EditOutlined } from "@ant-design/icons";
 import type { ActionMeta, Integration, TriggerMeta } from "../api/client";
 import { ConfigFields } from "./ClauseEditors";
@@ -9,11 +9,18 @@ import {
   isActionKind,
   isEventConfigured,
   isEventKind,
+  isFilterKind,
+  isFilterNodeConfigured,
   isSourceKind,
   isTriggerKind,
   type GraphNode,
   type GraphState,
 } from "../lib/graph";
+import {
+  FILTER_OPS,
+  eventFilterPathSuggestions,
+  filterNeedsValue,
+} from "../lib/filters";
 import { formatClauseOverview } from "../lib/rules";
 
 function defaultConfig(fields: { key: string; default?: string | number; type: string }[] = []) {
@@ -105,6 +112,7 @@ export function GraphNodeConfigModal({
   const [picking, setPicking] = useState(false);
 
   const isEvent = node ? isEventKind(node.kind) : false;
+  const isFilter = node ? isFilterKind(node.kind) : false;
   const isAction = node ? isActionKind(node.kind) : false;
   const isSource = node ? isSourceKind(node.kind) || node.slot === "source" : false;
   const isTrigger = node ? isTriggerKind(node.kind) : false;
@@ -114,9 +122,29 @@ export function GraphNodeConfigModal({
   const selectedAction = selectedIntegration?.actions?.find((item) => item.id === node?.action);
   const hasSelection = isEvent
     ? Boolean(node && isEventConfigured(node))
-    : isTrigger
-      ? Boolean(node?.integration && node?.trigger)
-      : Boolean(node?.integration && node?.action);
+    : isFilter
+      ? Boolean(node && isFilterNodeConfigured(node))
+      : isTrigger
+        ? Boolean(node?.integration && node?.trigger)
+        : Boolean(node?.integration && node?.action);
+
+  const eventNode = graph.nodes.find((n) => n.kind === "event");
+  const eventSource = String(eventNode?.config.source ?? node?.config.source ?? "webhook");
+  const filterPathOptions = useMemo(() => {
+    const suggestions = eventFilterPathSuggestions(eventSource);
+    const fromTriggers = buildArgumentItems(
+      graph.nodes
+        .filter((n) => isTriggerKind(n.kind))
+        .map((n) => ({ integration: n.integration, trigger: n.trigger })),
+      integrations,
+    ).map((item) => ({ value: item.short, label: item.short }));
+    const seen = new Set<string>();
+    return [...suggestions, ...fromTriggers].filter((item) => {
+      if (seen.has(item.value)) return false;
+      seen.add(item.value);
+      return true;
+    });
+  }, [eventSource, graph.nodes, integrations]);
 
   const ifClauses = graph.nodes
     .filter((n) => isTriggerKind(n.kind))
@@ -205,12 +233,12 @@ export function GraphNodeConfigModal({
       });
   }, [integrations, search, isTrigger, isSource]);
 
-  const showPicker = !isEvent && (!hasSelection || picking);
+  const showPicker = !isEvent && !isFilter && (!hasSelection || picking);
   const kindLabel = node?.kind.toUpperCase() ?? "Node";
-  const eventSource = String(node?.config.source ?? "webhook");
+  const nodeEventSource = String(node?.config.source ?? "webhook");
 
   const overview =
-    hasSelection && node && !isEvent
+    hasSelection && node && !isEvent && !isFilter
       ? isTrigger && node.integration && node.trigger
         ? formatClauseOverview(
             integrations,
@@ -258,24 +286,31 @@ export function GraphNodeConfigModal({
     onChange({ config: { ...node.config, ...patch } });
   }
 
+  function patchFilterConfig(patch: Record<string, unknown>) {
+    if (!node) return;
+    onChange({ config: { ...node.config, ...patch } });
+  }
+
   const help =
     !node
       ? ""
       : isEvent
         ? "EVENT — when this rule starts (webhook or Home Assistant)."
-        : isSource
-          ? "SOURCE — optional data (like weather) you can insert into Action / Else / Catch fields."
-          : node.kind === "or"
-            ? "OR — alternative condition. If any OR branch passes, the rule continues."
-            : node.kind === "and"
-              ? "AND — this condition must also pass."
-              : node.kind === "else"
-                ? "ELSE — runs when the If conditions do not pass."
-                : node.kind === "catch"
-                  ? "CATCH — runs when a trigger or action throws. Use {{error.message}} in templates."
-                  : node.kind === "action"
-                    ? "ACTION — runs when the If conditions pass."
-                    : "IF — the starting condition for this automation.";
+        : isFilter
+          ? "FILTER — compare a path (e.g. event.entityId or weather.temp) to a value. All filters must pass."
+          : isSource
+            ? "SOURCE — optional data (like weather) you can insert into Action / Else / Catch fields."
+            : node.kind === "or"
+              ? "OR — alternative condition. If any OR branch passes, the rule continues."
+              : node.kind === "and"
+                ? "AND — this condition must also pass."
+                : node.kind === "else"
+                  ? "ELSE — runs when the If conditions do not pass."
+                  : node.kind === "catch"
+                    ? "CATCH — runs when a trigger or action throws. Use {{error.message}} in templates."
+                    : node.kind === "action"
+                      ? "ACTION — runs when the If conditions pass."
+                      : "IF — the starting condition for this automation.";
 
   return (
     <Modal
@@ -297,7 +332,7 @@ export function GraphNodeConfigModal({
       width="min(680px, calc(100vw - 24px))"
       styles={{ body: { maxHeight: "min(70vh, 640px)", overflowY: "auto" } }}
       afterOpenChange={(visible) => {
-        if (visible && node && !isEvent && !hasSelection) {
+        if (visible && node && !isEvent && !isFilter && !hasSelection) {
           setPicking(true);
         }
       }}
@@ -306,7 +341,51 @@ export function GraphNodeConfigModal({
         <Space direction="vertical" size={16} style={{ width: "100%" }}>
           <Typography.Text type="secondary">{help}</Typography.Text>
 
-          {isEvent ? (
+          {isFilter ? (
+            <Space direction="vertical" size={12} style={{ width: "100%" }}>
+              <div>
+                <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
+                  PATH
+                </Typography.Text>
+                <AutoComplete
+                  style={{ marginTop: 8, width: "100%", maxWidth: 420 }}
+                  options={filterPathOptions}
+                  value={String(node.config.path ?? "")}
+                  onChange={(value) => patchFilterConfig({ path: value })}
+                  placeholder="e.g. event.entityId"
+                  filterOption={(input, option) =>
+                    String(option?.value ?? "")
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                />
+              </div>
+              <div>
+                <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
+                  OPERATOR
+                </Typography.Text>
+                <Select
+                  style={{ marginTop: 8, width: "100%", maxWidth: 280 }}
+                  value={String(node.config.op ?? "eq")}
+                  options={FILTER_OPS.map((op) => ({ value: op.value, label: op.label }))}
+                  onChange={(op) => patchFilterConfig({ op })}
+                />
+              </div>
+              {filterNeedsValue(String(node.config.op ?? "eq")) && (
+                <div>
+                  <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
+                    VALUE
+                  </Typography.Text>
+                  <Input
+                    style={{ marginTop: 8, maxWidth: 420 }}
+                    value={String(node.config.value ?? "")}
+                    placeholder="Compare against this value"
+                    onChange={(e) => patchFilterConfig({ value: e.target.value })}
+                  />
+                </div>
+              )}
+            </Space>
+          ) : isEvent ? (
             <>
               <div>
                 <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>
@@ -314,7 +393,7 @@ export function GraphNodeConfigModal({
                 </Typography.Text>
                 <div style={{ marginTop: 8 }}>
                   <Radio.Group
-                    value={eventSource === "homeassistant" ? "homeassistant" : "webhook"}
+                    value={nodeEventSource === "homeassistant" ? "homeassistant" : "webhook"}
                     onChange={(e) => {
                       const source = e.target.value as "webhook" | "homeassistant";
                       patchEventConfig(
@@ -336,7 +415,7 @@ export function GraphNodeConfigModal({
                 </div>
               </div>
 
-              {eventSource === "homeassistant" ? (
+              {nodeEventSource === "homeassistant" ? (
                 <Space direction="vertical" size={12} style={{ width: "100%" }}>
                   <div>
                     <Typography.Text strong style={{ fontSize: 12, letterSpacing: 0.04 }}>

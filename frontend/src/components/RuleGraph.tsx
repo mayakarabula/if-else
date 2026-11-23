@@ -20,12 +20,15 @@ import {
   isConditionConfigured,
   isEventConfigured,
   isEventKind,
+  isFilterKind,
+  isFilterNodeConfigured,
   isSourceKind,
   isTriggerKind,
   type GraphNode,
   type GraphNodeKind,
   type GraphState,
 } from "../lib/graph";
+import { formatFilterSummary } from "../lib/filters";
 import { analyzeGraphIssues, type GraphIssue } from "../lib/graphIssues";
 import { clauseLabel, formatClauseOverview } from "../lib/rules";
 import { useThemeMode } from "../theme";
@@ -77,17 +80,19 @@ function layoutGraph(
       const order = (k: GraphNodeKind) =>
         k === "event"
           ? 0
-          : k === "and" || k === "or"
+          : k === "filter"
             ? 1
-            : k === "source"
+            : k === "and" || k === "or"
               ? 2
-              : k === "action"
+              : k === "source"
                 ? 3
-                : k === "else"
+                : k === "action"
                   ? 4
-                  : k === "catch"
+                  : k === "else"
                     ? 5
-                    : 6;
+                    : k === "catch"
+                      ? 6
+                      : 7;
       return order(a.kind) - order(b.kind) || a.id.localeCompare(b.id);
     });
 
@@ -169,6 +174,11 @@ function nodeSubtitle(node: GraphNode, integrations: Integration[]): string {
       return entityId ? `HA · ${eventType} · ${entityId}` : `HA · ${eventType}`;
     }
     return "HTTP webhook";
+  }
+
+  if (isFilterKind(node.kind)) {
+    if (!isFilterNodeConfigured(node)) return "Pick a path and value…";
+    return formatFilterSummary(node.config);
   }
 
   if (isTriggerKind(node.kind)) {
@@ -679,7 +689,7 @@ export function RuleGraph({
         }}
       >
         <Space size={8} wrap={!isMobile}>
-          {(["event", "if", "and", "or", "source", "action", "else", "catch"] as GraphNodeKind[]).map((kind) => (
+          {(["event", "filter", "if", "and", "or", "source", "action", "else", "catch"] as GraphNodeKind[]).map((kind) => (
             <span
               key={kind}
               style={{
