@@ -6,6 +6,7 @@ import passport from "passport";
 import { authRouter } from "./auth/routes.js";
 import { requireAuth, requireAuthPage } from "./auth/middleware.js";
 import { configurePassport } from "./auth/passport.js";
+import { chatRouter } from "./api/chat.js";
 import { hooksRouter, integrationsRouter, rulesRouter, runsRouter } from "./api/routes.js";
 import { createArenaMiddleware } from "./engine/arena.js";
 import { getProducerQueue, waitForQueueReady } from "./engine/queue.js";
@@ -33,7 +34,7 @@ async function main() {
       credentials: true,
     }),
   );
-  app.use(express.json());
+  app.use(express.json({ limit: "2mb" }));
   app.use(
     session({
       secret: SESSION_SECRET,
@@ -64,6 +65,7 @@ async function main() {
   app.use("/api/rules", requireAuth, rulesRouter);
   app.use("/api/integrations", requireAuth, integrationsRouter);
   app.use("/api/runs", requireAuth, runsRouter);
+  app.use("/api/chat", requireAuth, chatRouter);
 
   // Bee-Queue dashboard (login required)
   app.use("/arena", requireAuthPage, createArenaMiddleware());

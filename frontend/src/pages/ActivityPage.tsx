@@ -18,12 +18,29 @@ export function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function refresh() {
+    setLoading(true);
+    setError(null);
     api
       .getRuns()
       .then(setRuns)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load activity"))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  useEffect(() => {
+    function onDataChanged(event: Event) {
+      const detail = (event as CustomEvent<{ mutations?: string[] }>).detail;
+      if (detail?.mutations?.includes("runs") || detail?.mutations?.includes("rules")) {
+        refresh();
+      }
+    }
+    window.addEventListener("if-else:data-changed", onDataChanged);
+    return () => window.removeEventListener("if-else:data-changed", onDataChanged);
   }, []);
 
   return (

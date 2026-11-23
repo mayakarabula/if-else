@@ -3,6 +3,7 @@ import { Avatar, Button, Dropdown, Layout as AntLayout, Space, Tooltip, Typograp
 import { LogoutOutlined, MoonOutlined, SunOutlined, UserOutlined } from "@ant-design/icons";
 import { useAuth } from "../auth/AuthContext";
 import { useThemeMode } from "../theme";
+import { AgentChatPanel } from "./AgentChatPanel";
 
 const { Header, Content } = AntLayout;
 
@@ -196,6 +197,8 @@ export function Layout() {
       >
         <Outlet />
       </Content>
+
+      <AgentChatPanel />
     </AntLayout>
   );
 }

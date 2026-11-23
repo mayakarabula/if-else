@@ -7,6 +7,7 @@ import {
   loadIntegrationConfig,
   loadRule,
   loadRuns,
+  saveIntegrationConfig,
   saveRule,
   type Rule,
   type RuleRunTrigger,
@@ -127,9 +128,55 @@ export async function serviceGetIntegrationConfig() {
   return loadIntegrationConfig();
 }
 
+/** Merge fields into one integration's config (does not wipe other integrations). */
+export async function servicePatchIntegrationConfig(
+  integrationId: string,
+  patch: Record<string, unknown>,
+) {
+  const id = integrationId.trim();
+  if (!id) throw new Error("integrationId is required");
+  const config = await loadIntegrationConfig();
+  const next = {
+    ...config,
+    [id]: {
+      ...(config[id] ?? {}),
+      ...patch,
+    },
+  };
+  await saveIntegrationConfig(next);
+  return next[id];
+}
+
+/** Replace the full integrations config map. */
+export async function serviceSaveIntegrationConfig(
+  config: Record<string, Record<string, unknown>>,
+) {
+  await saveIntegrationConfig(config);
+  return config;
+}
+
 export async function serviceListRuns(limit = 20) {
   const runs = await loadRuns();
   return runs.slice(0, Math.max(1, Math.min(limit, 100)));
+}
+
+/** Mask secret-looking values before sending config to an LLM. */
+export function redactIntegrationConfig(
+  config: Record<string, Record<string, unknown>>,
+): Record<string, Record<string, unknown>> {
+  const secretKey = /(token|secret|password|apiKey|refresh)/i;
+  const out: Record<string, Record<string, unknown>> = {};
+  for (const [integrationId, values] of Object.entries(config)) {
+    out[integrationId] = {};
+    for (const [key, value] of Object.entries(values ?? {})) {
+      if (secretKey.test(key) && String(value ?? "").trim()) {
+        out[integrationId][key] = "[configured]";
+      } else {
+        out[integrationId][key] = value;
+      }
+    }
+  }
+  return out;
 }
 
 export function ruleSummary(rule: Rule) {

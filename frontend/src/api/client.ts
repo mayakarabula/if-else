@@ -167,7 +167,51 @@ export const api = {
       body: JSON.stringify(config),
     }),
   getRuns: () => request<RunLog[]>("/api/runs"),
+  getChatStatus: () => request<{ configured: boolean }>("/api/chat/status"),
+  getChatSession: (id: string) =>
+    request<{
+      sessionId: string;
+      messages: ChatMessage[];
+      pageContext?: PageContext;
+      configured: boolean;
+    }>(`/api/chat/${id}`),
+  clearChatSession: (id: string) => request<void>(`/api/chat/${id}`, { method: "DELETE" }),
+  sendChat: (input: { sessionId?: string; message: string; pageContext?: PageContext }) =>
+    request<ChatTurnResponse>("/api/chat", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 };
+
+export type ChatMutation = "rules" | "integrations" | "runs";
+
+export interface PageContext {
+  path: string;
+  page: "rules" | "create" | "edit" | "integrations" | "activity" | "other";
+  ruleId?: string;
+  label?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "tool";
+  content: string;
+  createdAt: string;
+  toolName?: string;
+}
+
+export interface ChatTurnResponse {
+  sessionId: string;
+  messages: ChatMessage[];
+  mutations: ChatMutation[];
+  toolTrace?: Array<{ name: string; ok: boolean }>;
+  configured: boolean;
+}
+
+export function notifyDataChanged(mutations: ChatMutation[]) {
+  if (typeof window === "undefined" || mutations.length === 0) return;
+  window.dispatchEvent(new CustomEvent("if-else:data-changed", { detail: { mutations } }));
+}
 
 export function getIntegration(integrations: Integration[], id: string) {
   return integrations.find((i) => i.id === id);
