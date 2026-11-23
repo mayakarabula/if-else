@@ -11,7 +11,7 @@ Rule setup uses a **d3 flow graph**: start from an **IF** node, then branch with
 - **redis** — job queue backing store
 - **frontend** — Vite + React UI
 - **CLI / MCP** — create, read, list, update, and delete rules from the terminal or chat (same YAML store as the UI)
-- **Agent chat** — floating assistant on authenticated pages; knows the current route and can manage rules/integrations via tools
+- **Agent chat** — floating assistant on authenticated pages; knows the current route and can manage rules/integrations via tools (including **custom HTTP integrations**)
 
 ## Agent chat (in-app)
 

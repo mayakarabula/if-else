@@ -322,13 +322,30 @@ const integrationCopy: Record<string, string> = {
     "Run inline shell scripts or script files on the worker host. Optional default cwd, shell, and timeout.",
 };
 
+function fieldsForIntegration(integration: Integration) {
+  if (integration.id === "agentchat") return integrationFields.agentchat ?? [];
+  if (integration.custom && integration.configFields?.length) {
+    return integration.configFields.map((field) => ({
+      key: field.key,
+      label: field.label,
+      type: (field.type === "number" || field.type === "textarea" || field.type === "select"
+        ? field.type
+        : "text") as "text" | "textarea" | "select",
+      placeholder: field.placeholder,
+      required: field.required,
+      options: field.options,
+    }));
+  }
+  return integrationFields[integration.id] ?? [];
+}
+
 function configStatus(
-  integrationId: string,
+  integration: Integration,
   config: Record<string, Record<string, unknown>>,
 ): "ready" | "needs_setup" | "no_setup" {
-  const fields = integrationFields[integrationId];
+  const fields = fieldsForIntegration(integration);
   if (!fields || fields.length === 0) return "no_setup";
-  const values = config[integrationId] ?? {};
+  const values = config[integration.id] ?? {};
   const required = fields.filter((field) => field.required !== false);
   const complete = required.every((field) => String(values[field.key] ?? "").trim().length > 0);
   return complete ? "ready" : "needs_setup";
@@ -363,7 +380,7 @@ function IntegrationListItem({
   const conditions = (integration.triggers ?? []).filter((item) => (item.kind ?? "condition") !== "data");
   const sources = (integration.triggers ?? []).filter((item) => item.kind === "data");
   const actions = integration.actions ?? [];
-  const fields = integrationFields[integration.id] ?? [];
+  const fields = fieldsForIntegration(integration);
   const status =
     integration.id === "agentchat"
       ? chatStatus == null
@@ -371,8 +388,11 @@ function IntegrationListItem({
         : chatStatus.configured
           ? "ready"
           : "needs_setup"
-      : configStatus(integration.id, config);
-  const description = integrationCopy[integration.id] ?? capabilitySummary(integration);
+      : configStatus(integration, config);
+  const description =
+    integrationCopy[integration.id] ??
+    integration.description ??
+    capabilitySummary(integration);
   const agentChatHint =
     integration.id === "agentchat" && status === "needs_setup"
       ? "Set CURSOR_API_KEY in backend/.env (default), or add an OpenAI key here."
@@ -407,6 +427,7 @@ function IntegrationListItem({
             </Typography.Text>
             {status === "ready" && <Tag color="success">Configured</Tag>}
             {status === "needs_setup" && <Tag color="warning">Needs setup</Tag>}
+            {integration.custom && <Tag>Custom</Tag>}
             {agentChatHint && (
               <Typography.Text type="secondary" style={{ fontSize: 12, fontWeight: 400 }}>
                 {agentChatHint}
@@ -516,7 +537,7 @@ export function IntegrationsPage() {
   );
   const editingFields = useMemo(() => {
     if (!editing) return [];
-    const fields = integrationFields[editing.id] ?? [];
+    const fields = fieldsForIntegration(editing);
     if (editing.id !== "agentchat") return fields;
 
     const provider = String(config.agentchat?.provider ?? "auto");

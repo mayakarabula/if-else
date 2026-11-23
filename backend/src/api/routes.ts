@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { enqueueRuleEvaluationAndWait } from "../engine/queue.js";
-import { listIntegrationsForApi } from "../integrations/registry.js";
+import { listIntegrationsForApi, reloadCustomIntegrations } from "../integrations/registry.js";
 import {
   deleteRule,
   loadIntegrationConfig,
@@ -135,7 +135,8 @@ rulesRouter.delete("/:id", async (req, res) => {
 
 export const integrationsRouter = Router();
 
-integrationsRouter.get("/", (_req, res) => {
+integrationsRouter.get("/", async (_req, res) => {
+  await reloadCustomIntegrations();
   res.json(listIntegrationsForApi());
 });
 

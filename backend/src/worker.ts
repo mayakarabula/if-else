@@ -1,12 +1,14 @@
 import "dotenv/config";
 import { getWorkerQueue, waitForQueueReady } from "./engine/queue.js";
 import { evaluateRule } from "./engine/scheduler.js";
+import { reloadCustomIntegrations } from "./integrations/registry.js";
 import { ensureDirs, loadRule } from "./store/rules.js";
 
 const CONCURRENCY = Number(process.env.WORKER_CONCURRENCY ?? 2);
 
 async function main() {
   await ensureDirs();
+  await reloadCustomIntegrations();
 
   const queue = getWorkerQueue();
   await waitForQueueReady(queue);
@@ -14,6 +16,9 @@ async function main() {
   queue.process(CONCURRENCY, async (job) => {
     const { ruleId, manual } = job.data;
     console.log(`Processing rule ${ruleId} (job ${job.id}${manual ? ", manual" : ""})`);
+
+    // Pick up custom integrations created while the worker is running.
+    await reloadCustomIntegrations();
 
     const rule = await loadRule(ruleId);
     if (!rule) {
