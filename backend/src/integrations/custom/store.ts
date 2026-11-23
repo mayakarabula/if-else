@@ -76,8 +76,24 @@ export async function upsertCustomIntegrationSpec(
 ): Promise<CustomIntegrationSpec> {
   const id = assertValidCustomId(input.id);
   if (!input.name?.trim()) throw new Error("Integration name is required");
-  if (!(input.actions?.length || input.triggers?.length)) {
-    throw new Error("Custom integration needs at least one action or trigger");
+
+  const actions = (input.actions ?? []).filter((action) => {
+    if (!action?.id || !action?.label) return false;
+    if (!action.request || !String(action.request.url ?? "").trim()) {
+      throw new Error(`Action "${action.id || action.label}" needs request.url`);
+    }
+    return true;
+  });
+  const triggers = (input.triggers ?? []).filter((trigger) => {
+    if (!trigger?.id || !trigger?.label) return false;
+    if (!trigger.request || !String(trigger.request.url ?? "").trim()) {
+      throw new Error(`Trigger "${trigger.id || trigger.label}" needs request.url`);
+    }
+    return true;
+  });
+
+  if (!(actions.length || triggers.length)) {
+    throw new Error("Custom integration needs at least one action or trigger with request.url");
   }
 
   const now = new Date().toISOString();
@@ -91,8 +107,8 @@ export async function upsertCustomIntegrationSpec(
     color: (input.color ?? "#64748B").trim() || "#64748B",
     description: input.description?.trim() || undefined,
     configFields: input.configFields ?? [],
-    actions: input.actions ?? [],
-    triggers: input.triggers ?? [],
+    actions,
+    triggers,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
