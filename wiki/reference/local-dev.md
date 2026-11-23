@@ -18,6 +18,8 @@ Set `REDIS_HOST=127.0.0.1` in `backend/.env`.
 
 ## Wiki
 
+With Docker Compose the wiki is already on http://localhost:5174. Without Docker:
+
 ```bash
 npm run wiki
 ```
