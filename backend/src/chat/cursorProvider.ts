@@ -5,12 +5,43 @@ import { chatTools } from "./tools.js";
 const CURSOR_API = "https://api.cursor.com/v1";
 const POLL_MS = 2_000;
 const MAX_WAIT_MS = 4 * 60_000;
+const ACTIVE_STATUSES = new Set([
+  "CREATING",
+  "RUNNING",
+  "WAITING_FOR_BACKGROUND_WORK",
+]);
+const TERMINAL_STATUSES = new Set(["FINISHED", "ERROR", "CANCELLED", "EXPIRED"]);
 
 interface CursorRun {
   id: string;
   agentId?: string;
   status: string;
   result?: string;
+}
+
+interface CursorAgent {
+  id: string;
+  status?: string;
+  latestRunId?: string;
+}
+
+/** Serialize follow-ups per agent so concurrent UI requests don't race into 409. */
+const agentLocks = new Map<string, Promise<unknown>>();
+
+async function withAgentLock<T>(agentId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = agentLocks.get(agentId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const chain = previous.catch(() => undefined).then(() => gate);
+  agentLocks.set(agentId, chain);
+  await previous.catch(() => undefined);
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
 }
 
 function authHeaders(apiKey: string): HeadersInit {
@@ -43,7 +74,11 @@ async function cursorFetch(path: string, apiKey: string, init?: RequestInit) {
       typeof (json as { error?: { message?: string } }).error?.message === "string"
         ? (json as { error: { message: string } }).error.message
         : text.slice(0, 500) || res.statusText;
-    throw new Error(`Cursor API ${res.status}: ${message}`);
+    const err = new Error(`Cursor API ${res.status}: ${message}`) as Error & {
+      status?: number;
+    };
+    err.status = res.status;
+    throw err;
   }
   return json;
 }
@@ -52,16 +87,42 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function waitForRun(apiKey: string, agentId: string, runId: string): Promise<string> {
+function isBusyError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status = (err as Error & { status?: number }).status;
+  return status === 409 || /agent already has an active run|agent_busy/i.test(err.message);
+}
+
+async function getAgent(apiKey: string, agentId: string): Promise<CursorAgent> {
+  return (await cursorFetch(`/agents/${agentId}`, apiKey)) as CursorAgent;
+}
+
+async function getRun(apiKey: string, agentId: string, runId: string): Promise<CursorRun> {
+  return (await cursorFetch(`/agents/${agentId}/runs/${runId}`, apiKey)) as CursorRun;
+}
+
+async function cancelRun(apiKey: string, agentId: string, runId: string): Promise<void> {
+  try {
+    await cursorFetch(`/agents/${agentId}/runs/${runId}/cancel`, apiKey, { method: "POST" });
+  } catch (err) {
+    // Already terminal / not cancellable — treat as idle enough to continue.
+    if (!isBusyError(err) && !(err instanceof Error && /409/.test(err.message))) {
+      // ignore other cancel races
+    }
+  }
+}
+
+async function waitForRun(
+  apiKey: string,
+  agentId: string,
+  runId: string,
+  options?: { maxWaitMs?: number },
+): Promise<string> {
+  const maxWait = options?.maxWaitMs ?? MAX_WAIT_MS;
   const started = Date.now();
-  while (Date.now() - started < MAX_WAIT_MS) {
-    const run = (await cursorFetch(`/agents/${agentId}/runs/${runId}`, apiKey)) as CursorRun;
-    if (
-      run.status === "FINISHED" ||
-      run.status === "ERROR" ||
-      run.status === "CANCELLED" ||
-      run.status === "EXPIRED"
-    ) {
+  while (Date.now() - started < maxWait) {
+    const run = await getRun(apiKey, agentId, runId);
+    if (TERMINAL_STATUSES.has(run.status)) {
       if (run.status !== "FINISHED") {
         throw new Error(`Cursor run ${run.status}${run.result ? `: ${run.result}` : ""}`);
       }
@@ -70,6 +131,41 @@ async function waitForRun(apiKey: string, agentId: string, runId: string): Promi
     await sleep(POLL_MS);
   }
   throw new Error("Cursor agent timed out waiting for a reply");
+}
+
+/**
+ * Cursor allows only one active run per agent. Wait for the latest run to
+ * finish; if it's stuck past a grace period, cancel it so follow-ups can proceed.
+ */
+async function waitUntilAgentIdle(
+  apiKey: string,
+  agentId: string,
+  options?: { cancelAfterMs?: number },
+): Promise<void> {
+  const cancelAfterMs = options?.cancelAfterMs ?? 90_000;
+  const started = Date.now();
+
+  while (Date.now() - started < MAX_WAIT_MS) {
+    const agent = await getAgent(apiKey, agentId);
+    if (agent.status === "ARCHIVED") {
+      throw new Error("Cursor agent was archived — start a new chat");
+    }
+    if (agent.status === "IDLE" || !agent.latestRunId) return;
+
+    const run = await getRun(apiKey, agentId, agent.latestRunId);
+    if (!ACTIVE_STATUSES.has(run.status)) return;
+
+    if (Date.now() - started >= cancelAfterMs) {
+      await cancelRun(apiKey, agentId, run.id);
+      // Give the API a moment to flip status, then re-check.
+      await sleep(POLL_MS);
+      continue;
+    }
+
+    await sleep(POLL_MS);
+  }
+
+  throw new Error("Cursor agent stayed busy too long — try New chat or retry");
 }
 
 export function buildCursorToolProtocolPrompt(systemPrompt: string): string {
@@ -184,8 +280,14 @@ export async function ensureCursorAgent(options: {
 }): Promise<{ agentId: string; created: boolean }> {
   if (options.existingAgentId) {
     try {
-      await cursorFetch(`/agents/${options.existingAgentId}`, options.provider.apiKey);
-      return { agentId: options.existingAgentId, created: false };
+      const agent = await getAgent(options.provider.apiKey, options.existingAgentId);
+      if (agent.status !== "ARCHIVED") {
+        // Make sure a leftover run from a timed-out / abandoned turn is cleared.
+        await waitUntilAgentIdle(options.provider.apiKey, options.existingAgentId, {
+          cancelAfterMs: 15_000,
+        });
+        return { agentId: options.existingAgentId, created: false };
+      }
     } catch {
       // recreate below
     }
@@ -222,11 +324,37 @@ export async function ensureCursorAgent(options: {
 
   const runId = created.run?.id;
   if (runId) {
-    // Consume the bootstrap run so the agent is idle for the first user turn.
-    await waitForRun(options.provider.apiKey, agentId, runId).catch(() => "");
+    try {
+      await waitForRun(options.provider.apiKey, agentId, runId);
+    } catch {
+      // Bootstrap can hang; cancel so the first user turn isn't 409'd.
+      await cancelRun(options.provider.apiKey, agentId, runId);
+      await waitUntilAgentIdle(options.provider.apiKey, agentId, { cancelAfterMs: 5_000 });
+    }
+  } else {
+    await waitUntilAgentIdle(options.provider.apiKey, agentId, { cancelAfterMs: 30_000 });
   }
 
   return { agentId, created: true };
+}
+
+async function createFollowUpRun(
+  apiKey: string,
+  agentId: string,
+  prompt: string,
+  model?: string,
+): Promise<string> {
+  const created = (await cursorFetch(`/agents/${agentId}/runs`, apiKey, {
+    method: "POST",
+    body: JSON.stringify({
+      prompt: { text: prompt },
+      ...(model ? { model: { id: model } } : {}),
+    }),
+  })) as { run?: { id?: string }; id?: string };
+
+  const runId = created.run?.id ?? created.id;
+  if (!runId) throw new Error("Cursor follow-up response missing run id");
+  return runId;
 }
 
 export async function runCursorPrompt(options: {
@@ -234,15 +362,32 @@ export async function runCursorPrompt(options: {
   agentId: string;
   prompt: string;
 }): Promise<string> {
-  const created = (await cursorFetch(`/agents/${options.agentId}/runs`, options.provider.apiKey, {
-    method: "POST",
-    body: JSON.stringify({
-      prompt: { text: options.prompt },
-      ...(options.provider.model ? { model: { id: options.provider.model } } : {}),
-    }),
-  })) as { run?: { id?: string }; id?: string };
+  return withAgentLock(options.agentId, async () => {
+    await waitUntilAgentIdle(options.provider.apiKey, options.agentId, {
+      cancelAfterMs: 20_000,
+    });
 
-  const runId = created.run?.id ?? created.id;
-  if (!runId) throw new Error("Cursor follow-up response missing run id");
-  return waitForRun(options.provider.apiKey, options.agentId, runId);
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const runId = await createFollowUpRun(
+          options.provider.apiKey,
+          options.agentId,
+          options.prompt,
+          options.provider.model,
+        );
+        return await waitForRun(options.provider.apiKey, options.agentId, runId);
+      } catch (err) {
+        lastError = err;
+        if (!isBusyError(err)) throw err;
+        // Another run won the race — wait/cancel, then retry.
+        await waitUntilAgentIdle(options.provider.apiKey, options.agentId, {
+          cancelAfterMs: 10_000,
+        });
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Cursor agent stayed busy after retries");
+  });
 }
