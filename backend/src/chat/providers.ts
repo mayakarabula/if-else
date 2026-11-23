@@ -117,11 +117,17 @@ export async function chatStatus() {
   const ui = readAgentChatConfig(integrationConfig);
   const provider = await resolveChatProvider(ui.provider ?? "auto");
   const cursorEnvConfigured = Boolean(String(process.env.CURSOR_API_KEY ?? "").trim());
+  const cursorIntegrationConfigured = Boolean(
+    String(integrationConfig.cursor?.apiKey ?? "").trim(),
+  );
+  const cursorUiConfigured = Boolean(ui.cursorApiKey);
   return {
     configured: Boolean(provider),
     provider: provider?.id ?? null,
     providerLabel: provider?.label ?? null,
     preference: ui.provider ?? "auto",
     cursorEnvConfigured,
+    cursorIntegrationConfigured,
+    cursorUiConfigured,
   };
 }
