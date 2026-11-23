@@ -13,7 +13,8 @@ services:
 
   api:
     build: ./backend
-    command: npm run start:api
+    # Reinstall so new deps (e.g. nodemailer) are picked up without a stale image.
+    command: sh -c "npm install && npm run start:api"
     ports:
       - "3001:3001"
     env_file:
@@ -32,6 +33,10 @@ services:
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:5173/api/auth/google/callback}
     volumes:
       - ./backend/src:/app/src
+      - ./backend/package.json:/app/package.json
+      - ./backend/package-lock.json:/app/package-lock.json
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - backend-node-modules:/app/node_modules
       - ./rules:/data/rules
       - ./config:/data/config
     depends_on:
@@ -40,7 +45,7 @@ services:
 
   worker:
     build: ./backend
-    command: npm run start:worker
+    command: sh -c "npm install && npm run start:worker"
     env_file:
       - path: ./backend/.env
         required: false
@@ -53,6 +58,10 @@ services:
       FRONTEND_URL: http://localhost:5173
     volumes:
       - ./backend/src:/app/src
+      - ./backend/package.json:/app/package.json
+      - ./backend/package-lock.json:/app/package-lock.json
+      - ./backend/tsconfig.json:/app/tsconfig.json
+      - backend-node-modules:/app/node_modules
       - ./rules:/data/rules
       - ./config:/data/config
     depends_on:
@@ -88,4 +97,5 @@ services:
 
 volumes:
   redis-data:
+  backend-node-modules:
   wiki-node-modules:
