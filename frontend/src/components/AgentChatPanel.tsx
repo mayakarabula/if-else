@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   Alert,
   Button,
@@ -10,12 +10,7 @@ import {
   Typography,
   theme,
 } from "antd";
-import {
-  ClearOutlined,
-  CommentOutlined,
-  RobotOutlined,
-  SendOutlined,
-} from "@ant-design/icons";
+import { ClearOutlined, RobotOutlined, SendOutlined } from "@ant-design/icons";
 import {
   api,
   notifyDataChanged,
@@ -60,6 +55,7 @@ export function AgentChatPanel() {
 
   const [open, setOpen] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
+  const [providerLabel, setProviderLabel] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(() => {
     try {
       return localStorage.getItem(SESSION_KEY);
@@ -73,11 +69,33 @@ export function AgentChatPanel() {
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
+  function applyStatus(status: {
+    configured: boolean;
+    providerLabel?: string | null;
+  }) {
+    setConfigured(status.configured);
+    setProviderLabel(status.providerLabel ?? null);
+  }
+
   useEffect(() => {
     api
       .getChatStatus()
-      .then((status) => setConfigured(status.configured))
-      .catch(() => setConfigured(false));
+      .then(applyStatus)
+      .catch(() => {
+        setConfigured(false);
+        setProviderLabel(null);
+      });
+  }, []);
+
+  useEffect(() => {
+    function onDataChanged(event: Event) {
+      const detail = (event as CustomEvent<{ mutations?: string[] }>).detail;
+      if (detail?.mutations?.includes("integrations")) {
+        api.getChatStatus().then(applyStatus).catch(() => undefined);
+      }
+    }
+    window.addEventListener("if-else:data-changed", onDataChanged);
+    return () => window.removeEventListener("if-else:data-changed", onDataChanged);
   }, []);
 
   useEffect(() => {
@@ -86,7 +104,7 @@ export function AgentChatPanel() {
       .getChatSession(sessionId)
       .then((session) => {
         setMessages(session.messages);
-        setConfigured(session.configured);
+        applyStatus(session);
       })
       .catch(() => {
         setSessionId(null);
@@ -132,7 +150,7 @@ export function AgentChatPanel() {
         // ignore
       }
       setMessages(result.messages);
-      setConfigured(result.configured);
+      applyStatus(result);
       notifyDataChanged(result.mutations);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chat failed");
@@ -171,9 +189,9 @@ export function AgentChatPanel() {
   return (
     <>
       <FloatButton
-        icon={<CommentOutlined />}
+        icon={<RobotOutlined />}
         type="primary"
-        tooltip="Agent chat"
+        tooltip="Agent"
         onClick={() => setOpen(true)}
         style={{ right: 24, bottom: 24 }}
       />
@@ -198,14 +216,23 @@ export function AgentChatPanel() {
       >
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           Context: {pageContext.label ?? pageContext.page} · {pageContext.path}
+          {providerLabel ? ` · ${providerLabel}` : ""}
         </Typography.Text>
 
         {configured === false && (
           <Alert
             type="warning"
             showIcon
-            message="Chat is not configured"
-            description="Set CHAT_API_KEY (OpenAI-compatible) on the backend, optional CHAT_BASE_URL / CHAT_MODEL."
+            message="Agent chat needs setup"
+            description={
+              <span>
+                Configure a provider under{" "}
+                <Link to="/integrations" onClick={() => setOpen(false)}>
+                  Integrations → Agent chat
+                </Link>
+                . OpenAI-compatible and Cursor Agent are supported.
+              </span>
+            }
           />
         )}
 

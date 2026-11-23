@@ -21,11 +21,74 @@ const integrationFields: Record<
   {
     key: string;
     label: string;
-    type: "text" | "textarea";
+    type: "text" | "textarea" | "select";
     placeholder?: string;
     required?: boolean;
+    options?: { value: string; label: string }[];
   }[]
 > = {
+  agentchat: [
+    {
+      key: "provider",
+      label: "Provider",
+      type: "select",
+      required: false,
+      options: [
+        { value: "auto", label: "Auto (OpenAI if set, else Cursor)" },
+        { value: "openai", label: "OpenAI-compatible" },
+        { value: "cursor", label: "Cursor Agent" },
+      ],
+    },
+    {
+      key: "openaiApiKey",
+      label: "OpenAI API key",
+      type: "text",
+      placeholder: "sk-… (or CHAT_API_KEY / OPENAI_API_KEY)",
+      required: false,
+    },
+    {
+      key: "openaiBaseUrl",
+      label: "OpenAI base URL",
+      type: "text",
+      placeholder: "https://api.openai.com/v1",
+      required: false,
+    },
+    {
+      key: "openaiModel",
+      label: "OpenAI model",
+      type: "text",
+      placeholder: "gpt-4o-mini",
+      required: false,
+    },
+    {
+      key: "cursorApiKey",
+      label: "Cursor API key",
+      type: "text",
+      placeholder: "Falls back to Cursor integration / CURSOR_API_KEY",
+      required: false,
+    },
+    {
+      key: "cursorModel",
+      label: "Cursor model id",
+      type: "text",
+      placeholder: "optional (Cursor default)",
+      required: false,
+    },
+    {
+      key: "cursorRepoUrl",
+      label: "Cursor repo URL",
+      type: "text",
+      placeholder: "optional; falls back to Cursor integration default",
+      required: false,
+    },
+    {
+      key: "cursorStartingRef",
+      label: "Cursor starting ref",
+      type: "text",
+      placeholder: "main",
+      required: false,
+    },
+  ],
   telegram: [
     { key: "botToken", label: "Bot token", type: "text", placeholder: "123456:ABC...", required: true },
     { key: "chatId", label: "Chat ID", type: "text", placeholder: "123456789", required: true },
@@ -223,7 +286,18 @@ const integrationFields: Record<
   ],
 };
 
+const AGENT_CHAT_ITEM: Integration = {
+  id: "agentchat",
+  name: "Agent chat",
+  icon: "agent",
+  color: "#0F766E",
+  triggers: [],
+  actions: [],
+};
+
 const integrationCopy: Record<string, string> = {
+  agentchat:
+    "Power the floating in-app agent. Choose OpenAI-compatible chat completions and/or Cursor Cloud Agents. Secrets can also come from env.",
   time: "Poll on an interval (Time → Every) or fire once per day at a chosen time and timezone.",
   weather:
     "Open-Meteo weather conditions and data — no API key. Pick a place when you build a rule.",
@@ -251,6 +325,18 @@ function configStatus(
   integrationId: string,
   config: Record<string, Record<string, unknown>>,
 ): "ready" | "needs_setup" | "no_setup" {
+  if (integrationId === "agentchat") {
+    const chat = config.agentchat ?? {};
+    const provider = String(chat.provider ?? "auto");
+    const hasOpenAi = Boolean(String(chat.openaiApiKey ?? "").trim());
+    const hasCursor = Boolean(
+      String(chat.cursorApiKey ?? "").trim() || String(config.cursor?.apiKey ?? "").trim(),
+    );
+    if (provider === "openai") return hasOpenAi ? "ready" : "needs_setup";
+    if (provider === "cursor") return hasCursor ? "ready" : "needs_setup";
+    return hasOpenAi || hasCursor ? "ready" : "needs_setup";
+  }
+
   const fields = integrationFields[integrationId];
   if (!fields || fields.length === 0) return "no_setup";
   const values = config[integrationId] ?? {};
@@ -387,9 +473,14 @@ export function IntegrationsPage() {
     return () => window.removeEventListener("if-else:data-changed", onDataChanged);
   }, [message]);
 
+  const displayIntegrations = useMemo(
+    () => [AGENT_CHAT_ITEM, ...integrations],
+    [integrations],
+  );
+
   const editing = useMemo(
-    () => integrations.find((item) => item.id === editingId) ?? null,
-    [editingId, integrations],
+    () => displayIntegrations.find((item) => item.id === editingId) ?? null,
+    [editingId, displayIntegrations],
   );
   const editingFields = editing ? integrationFields[editing.id] ?? [] : [];
 
@@ -399,6 +490,9 @@ export function IntegrationsPage() {
       await api.saveIntegrationConfig(config);
       message.success("Integration settings saved.");
       setEditingId(null);
+      window.dispatchEvent(
+        new CustomEvent("if-else:data-changed", { detail: { mutations: ["integrations"] } }),
+      );
     } catch (err) {
       message.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -423,12 +517,12 @@ export function IntegrationsPage() {
         Everything you can use in If / Then rules. Secrets are stored in config/integrations.yaml.
       </Typography.Paragraph>
 
-      {integrations.length === 0 ? (
+      {displayIntegrations.length === 0 ? (
         <Empty description="No integrations registered." />
       ) : (
         <List
           itemLayout="horizontal"
-          dataSource={integrations}
+          dataSource={displayIntegrations}
           style={{
             marginTop: 8,
             background: token.colorBgContainer,

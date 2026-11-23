@@ -15,19 +15,25 @@ Rule setup uses a **d3 flow graph**: start from an **IF** node, then branch with
 
 ## Agent chat (in-app)
 
-A chat drawer is available on every signed-in page. It sends the current path/page (and rule id when editing) so the model can create or edit rules and update integration settings in a multi-turn conversation.
+A robot **Agent** button opens a chat drawer on every signed-in page. It sends the current path/page (and rule id when editing) so the model can create or edit rules and update integration settings in a multi-turn conversation.
 
-Configure an OpenAI-compatible Chat Completions endpoint on the backend:
+Configure under **Integrations → Agent chat** (preferred):
+
+- **Provider:** Auto / OpenAI-compatible / Cursor Agent
+- OpenAI: API key, base URL, model
+- Cursor: API key (or reuse Cursor integration / `CURSOR_API_KEY`), optional model + repo URL
+
+Env fallbacks still work:
 
 ```bash
 # backend/.env
 CHAT_API_KEY=sk-...
-# optional
 # CHAT_BASE_URL=https://api.openai.com/v1
 # CHAT_MODEL=gpt-4o-mini
+# CHAT_PROVIDER=auto|openai|cursor
+# CURSOR_API_KEY=...
+# CHAT_CURSOR_REPO_URL=https://github.com/org/repo
 ```
-
-Without `CHAT_API_KEY` (or `OPENAI_API_KEY`), the UI still shows the panel but explains that chat is not configured.
 
 ## CLI
 

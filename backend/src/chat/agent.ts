@@ -1,5 +1,12 @@
 import { serviceGetRule, serviceListIntegrations } from "../tools/rulesService.js";
 import {
+  buildCursorToolProtocolPrompt,
+  ensureCursorAgent,
+  parseCursorReply,
+  runCursorPrompt,
+} from "./cursorProvider.js";
+import { chatStatus, resolveChatProvider, type ResolvedChatProvider } from "./providers.js";
+import {
   createChatSession,
   getChatSession,
   newMessage,
@@ -22,15 +29,8 @@ interface OpenAiMessage {
   }>;
 }
 
-function chatConfig() {
-  const apiKey = String(process.env.CHAT_API_KEY ?? process.env.OPENAI_API_KEY ?? "").trim();
-  const baseUrl = String(process.env.CHAT_BASE_URL ?? "https://api.openai.com/v1").replace(/\/$/, "");
-  const model = String(process.env.CHAT_MODEL ?? "gpt-4o-mini").trim() || "gpt-4o-mini";
-  return { apiKey, baseUrl, model };
-}
-
-export function chatConfigured() {
-  return Boolean(chatConfig().apiKey);
+export async function chatConfigured() {
+  return (await chatStatus()).configured;
 }
 
 async function buildSystemPrompt(pageContext?: PageContext): Promise<string> {
@@ -79,22 +79,15 @@ Available integrations (summary):
 ${JSON.stringify(catalog, null, 2)}`;
 }
 
-async function callChatModel(messages: OpenAiMessage[]) {
-  const { apiKey, baseUrl, model } = chatConfig();
-  if (!apiKey) {
-    throw new Error(
-      "Chat is not configured — set CHAT_API_KEY (or OPENAI_API_KEY) on the backend",
-    );
-  }
-
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+async function callOpenAiModel(provider: ResolvedChatProvider, messages: OpenAiMessage[]) {
+  const res = await fetch(`${provider.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${provider.apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model,
+      model: provider.model,
       messages,
       tools: chatTools,
       tool_choice: "auto",
@@ -108,9 +101,7 @@ async function callChatModel(messages: OpenAiMessage[]) {
   }
 
   const payload = (await res.json()) as {
-    choices?: Array<{
-      message?: OpenAiMessage;
-    }>;
+    choices?: Array<{ message?: OpenAiMessage }>;
   };
   const message = payload.choices?.[0]?.message;
   if (!message) throw new Error("Chat model returned no message");
@@ -139,6 +130,126 @@ function toModelMessages(session: ChatSession, system: string): OpenAiMessage[] 
   return history;
 }
 
+function latestUserText(session: ChatSession): string {
+  for (let i = session.messages.length - 1; i >= 0; i -= 1) {
+    if (session.messages[i].role === "user") return session.messages[i].content;
+  }
+  return "";
+}
+
+async function runOpenAiTurn(session: ChatSession, system: string, provider: ResolvedChatProvider) {
+  const mutations = new Set<ChatMutation>();
+  const toolTrace: Array<{ name: string; ok: boolean }> = [];
+  let current = session;
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const reply = await callOpenAiModel(provider, toModelMessages(current, system));
+    const toolCalls = reply.tool_calls ?? [];
+
+    if (toolCalls.length > 0) {
+      current.messages.push(newMessage("assistant", reply.content ?? "", { toolCalls }));
+      for (const call of toolCalls) {
+        const result = await executeChatTool(call.function.name, call.function.arguments ?? "{}");
+        for (const mutation of result.mutations) mutations.add(mutation);
+        toolTrace.push({ name: call.function.name, ok: result.ok });
+        current.messages.push(
+          newMessage("tool", JSON.stringify(result.result), {
+            toolName: call.function.name,
+            toolCallId: call.id,
+          }),
+        );
+      }
+      current = await saveChatSession(current);
+      continue;
+    }
+
+    current.messages.push(newMessage("assistant", (reply.content ?? "").trim() || "Done."));
+    current = await saveChatSession(current);
+    return { session: current, mutations: [...mutations], toolTrace };
+  }
+
+  current.messages.push(
+    newMessage(
+      "assistant",
+      "I hit the tool-call limit for this turn. Ask me to continue if you want me to keep going.",
+    ),
+  );
+  current = await saveChatSession(current);
+  return { session: current, mutations: [...mutations], toolTrace };
+}
+
+async function runCursorTurn(session: ChatSession, system: string, provider: ResolvedChatProvider) {
+  const mutations = new Set<ChatMutation>();
+  const toolTrace: Array<{ name: string; ok: boolean }> = [];
+  let current: ChatSession = { ...session, provider: "cursor" };
+
+  const bootstrap = buildCursorToolProtocolPrompt(system);
+  const ensured = await ensureCursorAgent({
+    provider,
+    existingAgentId: current.cursorAgentId,
+    bootstrapPrompt: bootstrap,
+  });
+  current.cursorAgentId = ensured.agentId;
+  current = await saveChatSession(current);
+
+  let prompt = [
+    "Page/system context is already loaded for this agent.",
+    `User message:\n${latestUserText(current)}`,
+    "Respond with the JSON protocol only.",
+  ].join("\n\n");
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+    const raw = await runCursorPrompt({
+      provider,
+      agentId: current.cursorAgentId!,
+      prompt,
+    });
+    const parsed = parseCursorReply(raw);
+
+    if (parsed.kind === "tools") {
+      current.messages.push(
+        newMessage("assistant", "", {
+          toolCalls: parsed.toolCalls,
+        }),
+      );
+
+      const results: Array<{ name: string; ok: boolean; result: unknown }> = [];
+      for (const call of parsed.toolCalls) {
+        const executed = await executeChatTool(call.function.name, call.function.arguments ?? "{}");
+        for (const mutation of executed.mutations) mutations.add(mutation);
+        toolTrace.push({ name: call.function.name, ok: executed.ok });
+        results.push({ name: call.function.name, ok: executed.ok, result: executed.result });
+        current.messages.push(
+          newMessage("tool", JSON.stringify(executed.result), {
+            toolName: call.function.name,
+            toolCallId: call.id,
+          }),
+        );
+      }
+      current = await saveChatSession(current);
+      prompt = [
+        "Tool results from the if-else host:",
+        JSON.stringify(results, null, 2),
+        "Continue. Reply with more tool_calls or a final {\"message\":\"...\"} JSON object only.",
+      ].join("\n\n");
+      continue;
+    }
+
+    current.messages.push(newMessage("assistant", parsed.content));
+    current = await saveChatSession(current);
+    return { session: current, mutations: [...mutations], toolTrace };
+  }
+
+  current.messages.push(
+    newMessage(
+      "assistant",
+      "I hit the tool-call limit for this turn. Ask me to continue if you want me to keep going.",
+    ),
+  );
+  current = await saveChatSession(current);
+  return { session: current, mutations: [...mutations], toolTrace };
+}
+
 export async function runChatTurn(input: {
   sessionId?: string;
   message: string;
@@ -147,6 +258,13 @@ export async function runChatTurn(input: {
   const text = input.message.trim();
   if (!text) throw new Error("Message is required");
 
+  const provider = await resolveChatProvider("auto");
+  if (!provider) {
+    throw new Error(
+      "Chat is not configured — open Integrations → Agent chat, or set CHAT_API_KEY / CURSOR_API_KEY",
+    );
+  }
+
   let session =
     (input.sessionId ? await getChatSession(input.sessionId) : null) ??
     (await createChatSession(input.pageContext));
@@ -154,68 +272,24 @@ export async function runChatTurn(input: {
   if (input.pageContext) {
     session = { ...session, pageContext: input.pageContext };
   }
-
+  session.provider = provider.id;
   session.messages.push(newMessage("user", text));
   session = await saveChatSession(session);
 
   const system = await buildSystemPrompt(session.pageContext);
-  const mutations = new Set<ChatMutation>();
-  const toolTrace: Array<{ name: string; ok: boolean }> = [];
+  const result =
+    provider.id === "cursor"
+      ? await runCursorTurn(session, system, provider)
+      : await runOpenAiTurn(session, system, provider);
 
-  for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-    const modelMessages = toModelMessages(session, system);
-    const reply = await callChatModel(modelMessages);
-    const toolCalls = reply.tool_calls ?? [];
-
-    if (toolCalls.length > 0) {
-      session.messages.push(
-        newMessage("assistant", reply.content ?? "", {
-          toolCalls,
-        }),
-      );
-
-      for (const call of toolCalls) {
-        const result = await executeChatTool(call.function.name, call.function.arguments ?? "{}");
-        for (const mutation of result.mutations) mutations.add(mutation);
-        toolTrace.push({ name: call.function.name, ok: result.ok });
-        session.messages.push(
-          newMessage("tool", JSON.stringify(result.result), {
-            toolName: call.function.name,
-            toolCallId: call.id,
-          }),
-        );
-      }
-
-      session = await saveChatSession(session);
-      continue;
-    }
-
-    const content = (reply.content ?? "").trim() || "Done.";
-    session.messages.push(newMessage("assistant", content));
-    session = await saveChatSession(session);
-
-    return {
-      sessionId: session.id,
-      messages: publicMessages(session),
-      mutations: [...mutations],
-      toolTrace,
-      configured: true,
-    };
-  }
-
-  session.messages.push(
-    newMessage(
-      "assistant",
-      "I hit the tool-call limit for this turn. Ask me to continue if you want me to keep going.",
-    ),
-  );
-  session = await saveChatSession(session);
-
+  const status = await chatStatus();
   return {
-    sessionId: session.id,
-    messages: publicMessages(session),
-    mutations: [...mutations],
-    toolTrace,
+    sessionId: result.session.id,
+    messages: publicMessages(result.session),
+    mutations: result.mutations,
+    toolTrace: result.toolTrace,
     configured: true,
+    provider: status.provider,
+    providerLabel: status.providerLabel,
   };
 }
