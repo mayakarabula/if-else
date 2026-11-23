@@ -198,6 +198,29 @@ const integrationFields: Record<
       required: false,
     },
   ],
+  script: [
+    {
+      key: "defaultCwd",
+      label: "Default working directory",
+      type: "text",
+      placeholder: "optional",
+      required: false,
+    },
+    {
+      key: "shell",
+      label: "Shell",
+      type: "text",
+      placeholder: "/bin/sh",
+      required: false,
+    },
+    {
+      key: "timeoutMs",
+      label: "Default timeout (ms)",
+      type: "text",
+      placeholder: "60000",
+      required: false,
+    },
+  ],
 };
 
 const integrationCopy: Record<string, string> = {
@@ -220,6 +243,8 @@ const integrationCopy: Record<string, string> = {
     "Create pages and append paragraphs with a Notion internal integration token. Share pages/databases with the integration.",
   cursor:
     "Launch Cursor Cloud Agents with an API key (Agent SDK / Cloud Agents API). Optional default repository URL.",
+  script:
+    "Run inline shell scripts or script files on the worker host. Optional default cwd, shell, and timeout.",
 };
 
 function configStatus(

@@ -14,6 +14,7 @@ const icons: Record<string, string> = {
   sheets: "📊",
   notion: "📓",
   cursor: "⌘",
+  script: "$_",
 };
 
 /** Shared horizontal form layout so labels and controls line up across the app. */

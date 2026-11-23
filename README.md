@@ -100,6 +100,10 @@ Configure under **Integrations → Notion** with an [internal integration token]
 
 Configure under **Integrations → Cursor Agent** with a Cursor API key (or set `CURSOR_API_KEY`). Action: **Launch cloud agent** against a repository via the Cloud Agents API.
 
+### Shell script
+
+Configure optional defaults under **Integrations → Shell script** (working directory, shell, timeout). THEN action **Run script** and SOURCE **Capture script output** accept either **inline code** or a **file path** (templates like `{{weather.report}}` work in the script body/path).
+
 ## Local development (without full Docker)
 
 You still need Redis for the queue:
