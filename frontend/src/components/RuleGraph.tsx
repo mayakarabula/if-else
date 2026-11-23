@@ -120,7 +120,7 @@ function layoutGraph(
         label = child.node.kind.toUpperCase();
       } else if (child.node.kind === "source") {
         label = isSourceKind(node.kind) ? "AND" : "SOURCE";
-      } else if (child.node.kind === "catch" && !isActionKind(node.kind)) {
+      } else if (child.node.kind === "catch") {
         label = "ERROR";
       } else if (
         isActionKind(node.kind) &&
