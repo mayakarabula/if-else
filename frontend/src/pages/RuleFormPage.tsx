@@ -16,7 +16,7 @@ import { CopyOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api, type Integration, type RuleRunTrigger } from "../api/client";
 import { GraphNodeConfigModal } from "../components/GraphNodeConfigModal";
 import { RuleGraph } from "../components/RuleGraph";
-import { formLayout } from "../components/ui";
+import { formLayout, verticalFormProps } from "../components/ui";
 import {
   addChild,
   createEmptyGraph,
@@ -296,7 +296,7 @@ export function RuleFormPage() {
         style={{
           display: "grid",
           gap: 20,
-          maxWidth: formLayout.labelWidth + formLayout.controlWidth + 64,
+          maxWidth: formLayout.controlWidth + 64,
           padding: 20,
           marginBottom: 20,
           borderRadius: token.borderRadiusLG,
@@ -304,14 +304,7 @@ export function RuleFormPage() {
           border: `1px solid ${token.colorBorderSecondary}`,
         }}
       >
-        <Form
-          layout="horizontal"
-          labelAlign="left"
-          colon={false}
-          requiredMark={false}
-          labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
-          wrapperCol={{ flex: "1 1 auto" }}
-        >
+        <Form {...verticalFormProps}>
           <Form.Item
             label="Rule name"
             required

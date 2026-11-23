@@ -20,7 +20,7 @@ import {
 } from "@ant-design/icons";
 import type { ActionMeta, Integration, TriggerMeta } from "../api/client";
 import { ConfigFields } from "./ClauseEditors";
-import { formLayout, IntegrationIcon } from "./ui";
+import { formLayout, IntegrationIcon, verticalFormProps } from "./ui";
 import { buildArgumentItems } from "./AvailableVariables";
 import {
   isActionKind,
@@ -374,65 +374,20 @@ export function GraphNodeConfigModal({
           <Typography.Text type="secondary">{help}</Typography.Text>
 
           {isFilter ? (
-            <Space direction="vertical" size={14} style={{ width: "100%" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: needsFilterValue
-                    ? "minmax(0, 1.4fr) minmax(120px, 0.7fr) minmax(0, 1fr)"
-                    : "minmax(0, 1.6fr) minmax(140px, 0.8fr)",
-                  gap: 10,
-                  alignItems: "end",
-                  width: "100%",
-                }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                    Path
-                  </Typography.Text>
-                  <AutoComplete
-                    style={{ width: "100%" }}
-                    options={filterPathOptions}
-                    value={String(node.config.path ?? "")}
-                    onChange={(value) => patchFilterConfig({ path: value })}
-                    placeholder="event.entityId"
-                    filterOption={(input, option) =>
-                      String(option?.value ?? "")
-                        .toLowerCase()
-                        .includes(input.toLowerCase())
-                    }
-                  />
-                </div>
-                <div style={{ minWidth: 0 }}>
-                  <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                    Operator
-                  </Typography.Text>
-                  <Select
-                    style={{ width: "100%" }}
-                    value={filterOp}
-                    options={FILTER_OPS.map((op) => ({ value: op.value, label: op.label }))}
-                    onChange={(op) => patchFilterConfig({ op })}
-                  />
-                </div>
-                {needsFilterValue && (
-                  <div style={{ minWidth: 0 }}>
-                    <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-                      Value
-                    </Typography.Text>
-                    <Input
-                      style={{ width: "100%" }}
-                      value={String(node.config.value ?? "")}
-                      placeholder="e.g. light.kitchen"
-                      onChange={(e) => patchFilterConfig({ value: e.target.value })}
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Suggestions
-                </Typography.Text>
+            <Form {...verticalFormProps} style={{ maxWidth: formLayout.controlWidth + 48 }}>
+              <Form.Item label="Path" style={{ marginBottom: 12 }}>
+                <AutoComplete
+                  style={{ width: "100%", maxWidth: formLayout.controlWidth }}
+                  options={filterPathOptions}
+                  value={String(node.config.path ?? "")}
+                  onChange={(value) => patchFilterConfig({ path: value })}
+                  placeholder="event.entityId"
+                  filterOption={(input, option) =>
+                    String(option?.value ?? "")
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                />
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                   {filterPathOptions.slice(0, 8).map((option) => (
                     <Tag
@@ -444,18 +399,28 @@ export function GraphNodeConfigModal({
                     </Tag>
                   ))}
                 </div>
-              </div>
-            </Space>
+              </Form.Item>
+              <Form.Item label="Operator" style={{ marginBottom: 12 }}>
+                <Select
+                  style={{ width: "100%", maxWidth: formLayout.controlWidth }}
+                  value={filterOp}
+                  options={FILTER_OPS.map((op) => ({ value: op.value, label: op.label }))}
+                  onChange={(op) => patchFilterConfig({ op })}
+                />
+              </Form.Item>
+              {needsFilterValue && (
+                <Form.Item label="Value" style={{ marginBottom: 0 }}>
+                  <Input
+                    style={{ width: "100%", maxWidth: formLayout.controlWidth }}
+                    value={String(node.config.value ?? "")}
+                    placeholder="e.g. light.kitchen"
+                    onChange={(e) => patchFilterConfig({ value: e.target.value })}
+                  />
+                </Form.Item>
+              )}
+            </Form>
           ) : isEvent ? (
-            <Form
-              layout="horizontal"
-              labelAlign="left"
-              colon={false}
-              requiredMark={false}
-              labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
-              wrapperCol={{ flex: "1 1 auto" }}
-              style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 48 }}
-            >
+            <Form {...verticalFormProps} style={{ maxWidth: formLayout.controlWidth + 48 }}>
               <Form.Item label="Source" style={{ marginBottom: 12 }}>
                 <Radio.Group
                   optionType="button"
@@ -502,7 +467,15 @@ export function GraphNodeConfigModal({
               ) : (
                 <Form.Item label="Webhook URL" style={{ marginBottom: 0 }}>
                   {webhookUrl ? (
-                    <Input readOnly value={webhookUrl} style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }} />
+                    <Input
+                      readOnly
+                      value={webhookUrl}
+                      style={{
+                        maxWidth: formLayout.controlWidth + 80,
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: 12,
+                      }}
+                    />
                   ) : (
                     <Typography.Text type="secondary">Shown under Run when</Typography.Text>
                   )}

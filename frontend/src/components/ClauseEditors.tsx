@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Card, Col, Empty, Form, Input, InputNumber, Modal, Row, Space, Tag, Typography, theme } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import type { FieldSchema, Integration, TriggerMeta, ActionMeta } from "../api/client";
-import { FieldInput, formLayout, IntegrationIcon } from "./ui";
+import { FieldInput, formLayout, IntegrationIcon, verticalFormProps } from "./ui";
 import { PlaceField } from "./PlaceField";
 import { formatClauseOverview } from "../lib/rules";
 import { buildArgumentItems, type ArgumentItem } from "./AvailableVariables";
@@ -191,16 +191,8 @@ export function ConfigFields({
   }
 
   return (
-    <Form
-      layout="horizontal"
-      labelAlign="left"
-      colon={false}
-      requiredMark={false}
-      labelCol={{ flex: `0 0 ${formLayout.labelWidth}px` }}
-      wrapperCol={{ flex: "1 1 auto" }}
-      style={{ maxWidth: formLayout.labelWidth + formLayout.controlWidth + 48 }}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>{rows}</div>
+    <Form {...verticalFormProps} style={{ maxWidth: formLayout.controlWidth + 48 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>{rows}</div>
     </Form>
   );
 }
