@@ -204,6 +204,7 @@ export interface ChatStatus {
   provider?: "openai" | "cursor" | null;
   providerLabel?: string | null;
   preference?: "auto" | "openai" | "cursor";
+  cursorEnvConfigured?: boolean;
 }
 
 export interface ChatTurnResponse extends ChatStatus {

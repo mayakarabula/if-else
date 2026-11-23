@@ -21,19 +21,21 @@ Configure under **Integrations → Agent chat** (preferred):
 
 - **Provider:** Auto / OpenAI-compatible / Cursor Agent
 - OpenAI: API key, base URL, model
-- Cursor: API key (or reuse Cursor integration / `CURSOR_API_KEY`), optional model + repo URL
+- Cursor: uses **`CURSOR_API_KEY` by default** (optional UI override), plus optional model + repo URL
 
-Env fallbacks still work:
+Env:
 
 ```bash
 # backend/.env
-CHAT_API_KEY=sk-...
+CURSOR_API_KEY=...          # default for Cursor Agent chat (+ Cursor integration)
+# CHAT_PROVIDER=auto|openai|cursor
+# CHAT_API_KEY=sk-...
 # CHAT_BASE_URL=https://api.openai.com/v1
 # CHAT_MODEL=gpt-4o-mini
-# CHAT_PROVIDER=auto|openai|cursor
-# CURSOR_API_KEY=...
 # CHAT_CURSOR_REPO_URL=https://github.com/org/repo
 ```
+
+With only `CURSOR_API_KEY` set, Auto picks Cursor.
 
 ## CLI
 

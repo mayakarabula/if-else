@@ -79,9 +79,10 @@ export async function resolveChatProvider(
       } satisfies ResolvedChatProvider)
     : null;
 
+  // CURSOR_API_KEY is the default for Cursor chat; UI / Cursor integration can override.
   const cursorKey = String(
-    ui.cursorApiKey ??
-      process.env.CURSOR_API_KEY ??
+    process.env.CURSOR_API_KEY ??
+      ui.cursorApiKey ??
       integrationConfig.cursor?.apiKey ??
       "",
   ).trim();
@@ -107,17 +108,20 @@ export async function resolveChatProvider(
 
   if (explicit === "cursor") return cursor;
   if (explicit === "openai") return openai;
-  return openai ?? cursor;
+  // Auto: prefer Cursor when CURSOR_API_KEY (or other cursor key) is available.
+  return cursor ?? openai;
 }
 
 export async function chatStatus() {
   const integrationConfig = await loadIntegrationConfig();
   const ui = readAgentChatConfig(integrationConfig);
   const provider = await resolveChatProvider(ui.provider ?? "auto");
+  const cursorEnvConfigured = Boolean(String(process.env.CURSOR_API_KEY ?? "").trim());
   return {
     configured: Boolean(provider),
     provider: provider?.id ?? null,
     providerLabel: provider?.label ?? null,
     preference: ui.provider ?? "auto",
+    cursorEnvConfigured,
   };
 }
