@@ -14,12 +14,15 @@ import {
   serviceUpdateRule,
 } from "../tools/rulesService.js";
 import type { Rule } from "../store/rules.js";
+import { publishChatMutations } from "./events.js";
 import type { ChatMutation } from "./types.js";
 
 export interface ToolCallResult {
   ok: boolean;
   result: unknown;
   mutations: ChatMutation[];
+  ruleId?: string;
+  integrationId?: string;
 }
 
 type JsonSchema = Record<string, unknown>;
@@ -225,20 +228,25 @@ export async function executeChatTool(
         const body = bodyFromArgs(args);
         if (typeof args.id === "string" && args.id.trim()) body.id = args.id.trim();
         const saved = await serviceCreateRule(body);
-        return { ok: true, result: saved, mutations: ["rules"] };
+        publishChatMutations(["rules"], { ruleId: saved.id });
+        return { ok: true, result: saved, mutations: ["rules"], ruleId: saved.id };
       }
       case "update_rule": {
         const id = String(args.id ?? "");
         const saved = await serviceUpdateRule(id, bodyFromArgs(args));
-        return { ok: true, result: saved, mutations: ["rules"] };
+        publishChatMutations(["rules"], { ruleId: saved.id });
+        return { ok: true, result: saved, mutations: ["rules"], ruleId: saved.id };
       }
       case "delete_rule": {
-        const result = await serviceDeleteRule(String(args.id ?? ""));
-        return { ok: true, result, mutations: ["rules"] };
+        const id = String(args.id ?? "");
+        const result = await serviceDeleteRule(id);
+        publishChatMutations(["rules"], { ruleId: id });
+        return { ok: true, result, mutations: ["rules"], ruleId: id };
       }
       case "set_rule_enabled": {
         const saved = await serviceSetEnabled(String(args.id ?? ""), Boolean(args.enabled));
-        return { ok: true, result: saved, mutations: ["rules"] };
+        publishChatMutations(["rules"], { ruleId: saved.id });
+        return { ok: true, result: saved, mutations: ["rules"], ruleId: saved.id };
       }
       case "list_integrations": {
         return { ok: true, result: await serviceListIntegrations(), mutations: [] };
@@ -254,10 +262,12 @@ export async function executeChatTool(
             ? (args.fields as Record<string, unknown>)
             : {};
         const saved = await servicePatchIntegrationConfig(integrationId, fields);
+        publishChatMutations(["integrations"], { integrationId });
         return {
           ok: true,
           result: redactIntegrationConfig({ [integrationId]: saved })[integrationId],
           mutations: ["integrations"],
+          integrationId,
         };
       }
       case "list_runs": {

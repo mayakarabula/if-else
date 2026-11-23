@@ -31,6 +31,46 @@ async function writeStore(store: Store) {
   await writeFile(SESSIONS_PATH, JSON.stringify(trimmed, null, 2), "utf8");
 }
 
+export type ChatSessionSummary = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  pageLabel?: string;
+  provider?: ChatSession["provider"];
+};
+
+function sessionTitle(session: ChatSession): string {
+  const firstUser = session.messages.find(
+    (message) => message.role === "user" && message.content.trim().length > 0,
+  );
+  const raw = firstUser?.content.trim() || "New chat";
+  return raw.length > 72 ? `${raw.slice(0, 69).trimEnd()}…` : raw;
+}
+
+export async function listChatSessions(): Promise<ChatSessionSummary[]> {
+  const store = await readStore();
+  return Object.values(store)
+    .filter((session) =>
+      session.messages.some(
+        (message) =>
+          (message.role === "user" || message.role === "assistant") &&
+          message.content.trim().length > 0,
+      ),
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .map((session) => ({
+      id: session.id,
+      title: sessionTitle(session),
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      messageCount: publicMessages(session).length,
+      ...(session.pageContext?.label ? { pageLabel: session.pageContext.label } : {}),
+      ...(session.provider ? { provider: session.provider } : {}),
+    }));
+}
+
 export async function getChatSession(id: string): Promise<ChatSession | null> {
   const store = await readStore();
   return store[id] ?? null;

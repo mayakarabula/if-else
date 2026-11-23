@@ -168,6 +168,11 @@ export const api = {
     }),
   getRuns: () => request<RunLog[]>("/api/runs"),
   getChatStatus: () => request<ChatStatus>("/api/chat/status"),
+  listChatSessions: () => request<{ sessions: ChatSessionSummary[] }>("/api/chat/sessions"),
+  getChatEvents: (since?: string) =>
+    request<{ events: ChatDataEvent[] }>(
+      since ? `/api/chat/events?since=${encodeURIComponent(since)}` : "/api/chat/events",
+    ),
   getChatSession: (id: string) =>
     request<{
       sessionId: string;
@@ -199,6 +204,24 @@ export interface ChatMessage {
   toolName?: string;
 }
 
+export interface ChatSessionSummary {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  pageLabel?: string;
+  provider?: "openai" | "cursor";
+}
+
+export interface ChatDataEvent {
+  id: string;
+  at: string;
+  mutations: ChatMutation[];
+  ruleId?: string;
+  integrationId?: string;
+}
+
 export interface ChatStatus {
   configured: boolean;
   provider?: "openai" | "cursor" | null;
@@ -216,9 +239,23 @@ export interface ChatTurnResponse extends ChatStatus {
   toolTrace?: Array<{ name: string; ok: boolean }>;
 }
 
-export function notifyDataChanged(mutations: ChatMutation[]) {
+export type DataChangedDetail = {
+  mutations: ChatMutation[];
+  ruleId?: string;
+  integrationId?: string;
+  source?: "chat" | "chat-live" | "ui";
+};
+
+export function notifyDataChanged(
+  mutations: ChatMutation[],
+  extra?: Omit<DataChangedDetail, "mutations">,
+) {
   if (typeof window === "undefined" || mutations.length === 0) return;
-  window.dispatchEvent(new CustomEvent("if-else:data-changed", { detail: { mutations } }));
+  window.dispatchEvent(
+    new CustomEvent("if-else:data-changed", {
+      detail: { mutations, ...extra } satisfies DataChangedDetail,
+    }),
+  );
 }
 
 export function getIntegration(integrations: Integration[], id: string) {

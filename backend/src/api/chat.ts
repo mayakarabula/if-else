@@ -1,7 +1,13 @@
 import { Router } from "express";
 import { runChatTurn } from "../chat/agent.js";
 import { chatStatus } from "../chat/providers.js";
-import { clearChatSession, getChatSession, publicMessages } from "../chat/sessions.js";
+import { listChatEventsSince } from "../chat/events.js";
+import {
+  clearChatSession,
+  getChatSession,
+  listChatSessions,
+  publicMessages,
+} from "../chat/sessions.js";
 import type { PageContext } from "../chat/types.js";
 
 function parsePageContext(value: unknown): PageContext | undefined {
@@ -34,6 +40,18 @@ export const chatRouter = Router();
 
 chatRouter.get("/status", async (_req, res) => {
   res.json(await chatStatus());
+});
+
+chatRouter.get("/sessions", async (_req, res) => {
+  res.json({ sessions: await listChatSessions() });
+});
+
+chatRouter.get("/events", async (req, res) => {
+  const since =
+    typeof req.query.since === "string" && req.query.since.trim()
+      ? req.query.since.trim()
+      : undefined;
+  res.json({ events: listChatEventsSince(since) });
 });
 
 chatRouter.get("/:id", async (req, res) => {

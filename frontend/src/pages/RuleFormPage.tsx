@@ -81,6 +81,25 @@ export function RuleFormPage() {
     setSaveAttempted(false);
   }, [id]);
 
+  function applyRule(rule: Awaited<ReturnType<typeof api.getRule>>, integrationsData: Integration[]) {
+    setIntegrations(integrationsData);
+    setName(rule.name);
+    if (!rule.enabled) setRunMode("off");
+    else setRunMode(rule.runTrigger === "webhook" ? "webhook" : "timer");
+    setWebhookToken(rule.webhookToken?.trim() || newWebhookToken());
+    const next = refineGraphSlots(ruleToGraph(rule, integrationsData), integrationsData);
+    setGraph(next);
+    setSelectedId((current) =>
+      current && next.nodes.some((node) => node.id === current)
+        ? current
+        : (next.nodes[0]?.id ?? null),
+    );
+    // Preexisting rules: show setup issues immediately on load.
+    setTouchedIds(new Set(next.nodes.map((node) => node.id)));
+    setSaveAttempted(false);
+    setError(null);
+  }
+
   useEffect(() => {
     if (!id) return;
 
@@ -89,23 +108,42 @@ export function RuleFormPage() {
 
     Promise.all([api.getRule(id), api.getIntegrations()])
       .then(([rule, integrationsData]) => {
-        setIntegrations(integrationsData);
-        setName(rule.name);
-        if (!rule.enabled) setRunMode("off");
-        else setRunMode(rule.runTrigger === "webhook" ? "webhook" : "timer");
-        setWebhookToken(rule.webhookToken?.trim() || newWebhookToken());
-        const next = refineGraphSlots(ruleToGraph(rule, integrationsData), integrationsData);
-        setGraph(next);
-        setSelectedId(next.nodes[0]?.id ?? null);
-        // Preexisting rules: show setup issues immediately on load.
-        setTouchedIds(new Set(next.nodes.map((node) => node.id)));
-        setSaveAttempted(false);
+        applyRule(rule, integrationsData);
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load rule");
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Reload immediately when agent chat (or another tab) mutates this rule.
+  useEffect(() => {
+    if (!id) return;
+
+    function onDataChanged(event: Event) {
+      const detail = (event as CustomEvent<{ mutations?: string[]; ruleId?: string }>).detail;
+      if (!detail?.mutations?.includes("rules")) return;
+      if (detail.ruleId && detail.ruleId !== id) return;
+
+      void Promise.all([api.getRule(id!), api.getIntegrations()])
+        .then(([rule, integrationsData]) => {
+          applyRule(rule, integrationsData);
+          message.info("Rule updated");
+        })
+        .catch((err) => {
+          const text = err instanceof Error ? err.message : "Failed to reload rule";
+          if (/not found/i.test(text)) {
+            message.warning("Rule was deleted");
+            navigate("/");
+            return;
+          }
+          setError(text);
+        });
+    }
+
+    window.addEventListener("if-else:data-changed", onDataChanged);
+    return () => window.removeEventListener("if-else:data-changed", onDataChanged);
+  }, [id, message, navigate]);
 
   const selected = useMemo(
     () => graph.nodes.find((n) => n.id === selectedId) ?? null,
@@ -120,7 +158,11 @@ export function RuleFormPage() {
   function handleAddChild(parentId: string, kind: GraphNodeKind) {
     setGraph((current) => {
       const next = addChild(current, parentId, kind);
-      const added = next.nodes.find((n) => !current.nodes.some((c) => c.id === n.id));
+      // Prefer selecting the requested kind (THEN may also auto-add CATCH).
+      const added =
+        next.nodes.find(
+          (n) => n.kind === kind && !current.nodes.some((c) => c.id === n.id),
+        ) ?? next.nodes.find((n) => !current.nodes.some((c) => c.id === n.id));
       if (added) {
         setSelectedId(added.id);
         setConfigOpen(true);

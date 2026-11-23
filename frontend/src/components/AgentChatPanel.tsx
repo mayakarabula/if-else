@@ -4,17 +4,26 @@ import {
   Alert,
   Button,
   Drawer,
+  Empty,
   FloatButton,
   Input,
+  List,
   Space,
   Typography,
   theme,
 } from "antd";
-import { ClearOutlined, RobotOutlined, SendOutlined } from "@ant-design/icons";
+import {
+  ClearOutlined,
+  HistoryOutlined,
+  RobotOutlined,
+  SendOutlined,
+} from "@ant-design/icons";
 import {
   api,
   notifyDataChanged,
+  type ChatDataEvent,
   type ChatMessage,
+  type ChatSessionSummary,
   type PageContext,
 } from "../api/client";
 
@@ -44,6 +53,19 @@ function pageContextFromLocation(pathname: string, ruleId?: string): PageContext
   return { path: pathname, page: "other" };
 }
 
+function formatSessionTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export function AgentChatPanel() {
   const { token } = theme.useToken();
   const location = useLocation();
@@ -54,6 +76,9 @@ export function AgentChatPanel() {
   );
 
   const [open, setOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [providerLabel, setProviderLabel] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(() => {
@@ -68,6 +93,8 @@ export function AgentChatPanel() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const eventsSinceRef = useRef<string>(new Date().toISOString());
+  const seenEventIdsRef = useRef<Set<string>>(new Set());
 
   function applyStatus(status: {
     configured: boolean;
@@ -75,6 +102,41 @@ export function AgentChatPanel() {
   }) {
     setConfigured(status.configured);
     setProviderLabel(status.providerLabel ?? null);
+  }
+
+  function persistSessionId(next: string | null) {
+    setSessionId(next);
+    try {
+      if (next) localStorage.setItem(SESSION_KEY, next);
+      else localStorage.removeItem(SESSION_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function refreshSessions() {
+    setSessionsLoading(true);
+    try {
+      const result = await api.listChatSessions();
+      setSessions(result.sessions);
+    } catch {
+      setSessions([]);
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
+
+  function publishLiveEvents(events: ChatDataEvent[]) {
+    for (const event of events) {
+      if (seenEventIdsRef.current.has(event.id)) continue;
+      seenEventIdsRef.current.add(event.id);
+      notifyDataChanged(event.mutations, {
+        ruleId: event.ruleId,
+        integrationId: event.integrationId,
+        source: "chat-live",
+      });
+      eventsSinceRef.current = event.at;
+    }
   }
 
   useEffect(() => {
@@ -107,18 +169,43 @@ export function AgentChatPanel() {
         applyStatus(session);
       })
       .catch(() => {
-        setSessionId(null);
-        try {
-          localStorage.removeItem(SESSION_KEY);
-        } catch {
-          // ignore
-        }
+        persistSessionId(null);
+        setMessages([]);
       });
   }, [open, sessionId]);
 
   useEffect(() => {
+    if (!open || !historyOpen) return;
+    void refreshSessions();
+  }, [open, historyOpen]);
+
+  // Poll chat mutation events while the drawer is open so UI updates mid-turn.
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    async function tick() {
+      try {
+        const { events } = await api.getChatEvents(eventsSinceRef.current);
+        if (!cancelled && events.length > 0) publishLiveEvents(events);
+      } catch {
+        // ignore transient poll errors
+      }
+    }
+
+    void tick();
+    const intervalMs = sending ? 1200 : 4000;
+    const timer = window.setInterval(() => void tick(), intervalMs);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [open, sending]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, open, sending]);
+  }, [messages, open, sending, historyOpen]);
 
   async function handleSend() {
     const text = draft.trim();
@@ -127,6 +214,7 @@ export function AgentChatPanel() {
     setSending(true);
     setError(null);
     setDraft("");
+    setHistoryOpen(false);
     setMessages((current) => [
       ...current,
       {
@@ -143,15 +231,11 @@ export function AgentChatPanel() {
         message: text,
         pageContext,
       });
-      setSessionId(result.sessionId);
-      try {
-        localStorage.setItem(SESSION_KEY, result.sessionId);
-      } catch {
-        // ignore
-      }
+      persistSessionId(result.sessionId);
       setMessages(result.messages);
       applyStatus(result);
-      notifyDataChanged(result.mutations);
+      notifyDataChanged(result.mutations, { source: "chat" });
+      if (historyOpen) void refreshSessions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chat failed");
     } finally {
@@ -160,21 +244,38 @@ export function AgentChatPanel() {
   }
 
   async function handleClear() {
-    if (sessionId) {
-      try {
-        await api.clearChatSession(sessionId);
-      } catch {
-        // ignore
-      }
-    }
-    setSessionId(null);
+    // Start a new chat without deleting history.
+    persistSessionId(null);
     setMessages([]);
     setError(null);
+    setHistoryOpen(false);
+  }
+
+  async function handleSelectSession(id: string) {
+    persistSessionId(id);
+    setHistoryOpen(false);
+    setError(null);
     try {
-      localStorage.removeItem(SESSION_KEY);
+      const session = await api.getChatSession(id);
+      setMessages(session.messages);
+      applyStatus(session);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load chat");
+      setMessages([]);
+    }
+  }
+
+  async function handleDeleteSession(id: string) {
+    try {
+      await api.clearChatSession(id);
     } catch {
       // ignore
     }
+    if (sessionId === id) {
+      persistSessionId(null);
+      setMessages([]);
+    }
+    void refreshSessions();
   }
 
   const suggestions =
@@ -209,9 +310,19 @@ export function AgentChatPanel() {
         onClose={() => setOpen(false)}
         styles={{ body: { display: "flex", flexDirection: "column", gap: 12, paddingBottom: 16 } }}
         extra={
-          <Button type="text" icon={<ClearOutlined />} onClick={handleClear} disabled={sending}>
-            New chat
-          </Button>
+          <Space size={4}>
+            <Button
+              type="text"
+              icon={<HistoryOutlined />}
+              onClick={() => setHistoryOpen((value) => !value)}
+              disabled={sending}
+            >
+              History
+            </Button>
+            <Button type="text" icon={<ClearOutlined />} onClick={() => void handleClear()} disabled={sending}>
+              New chat
+            </Button>
+          </Space>
         }
       >
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -238,90 +349,142 @@ export function AgentChatPanel() {
 
         {error && <Alert type="error" showIcon message={error} />}
 
-        <div
-          style={{
-            flex: 1,
-            minHeight: 280,
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            paddingBlock: 4,
-          }}
-        >
-          {messages.length === 0 && (
-            <div style={{ display: "grid", gap: 8 }}>
-              <Typography.Text type="secondary">
-                Ask me to create or edit rules, configure integrations, or explain this page.
-              </Typography.Text>
-              <Space wrap>
-                {suggestions.map((item) => (
-                  <Button
-                    key={item}
-                    size="small"
-                    onClick={() => setDraft(item)}
-                    disabled={configured === false}
-                  >
-                    {item}
-                  </Button>
-                ))}
-              </Space>
-            </div>
-          )}
-
-          {messages.map((message) => {
-            const mine = message.role === "user";
-            return (
-              <div
-                key={message.id}
-                style={{
-                  alignSelf: mine ? "flex-end" : "flex-start",
-                  maxWidth: "92%",
-                  background: mine ? token.colorPrimary : token.colorFillSecondary,
-                  color: mine ? token.colorTextLightSolid : token.colorText,
-                  borderRadius: 12,
-                  padding: "8px 12px",
-                  whiteSpace: "pre-wrap",
-                  fontSize: 13,
-                  lineHeight: 1.45,
-                }}
-              >
-                {message.content}
-              </div>
-            );
-          })}
-
-          {sending && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Thinking…
-            </Typography.Text>
-          )}
-          <div ref={bottomRef} />
-        </div>
-
-        <Space.Compact style={{ width: "100%" }}>
-          <Input.TextArea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Message the agent…"
-            autoSize={{ minRows: 1, maxRows: 5 }}
-            disabled={sending || configured === false}
-            onPressEnter={(e) => {
-              if (!e.shiftKey) {
-                e.preventDefault();
-                void handleSend();
-              }
+        {historyOpen ? (
+          <div style={{ flex: 1, minHeight: 280, overflowY: "auto" }}>
+            <List
+              loading={sessionsLoading}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No chats yet" /> }}
+              dataSource={sessions}
+              renderItem={(item) => (
+                <List.Item
+                  style={{
+                    cursor: "pointer",
+                    background: item.id === sessionId ? token.colorFillSecondary : undefined,
+                    borderRadius: 8,
+                    paddingInline: 8,
+                  }}
+                  actions={[
+                    <Button
+                      key="delete"
+                      type="link"
+                      size="small"
+                      danger
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteSession(item.id);
+                      }}
+                    >
+                      Delete
+                    </Button>,
+                  ]}
+                  onClick={() => void handleSelectSession(item.id)}
+                >
+                  <List.Item.Meta
+                    title={
+                      <Typography.Text ellipsis style={{ maxWidth: 220 }}>
+                        {item.title}
+                      </Typography.Text>
+                    }
+                    description={
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        {formatSessionTime(item.updatedAt)}
+                        {item.pageLabel ? ` · ${item.pageLabel}` : ""}
+                        {` · ${item.messageCount} msgs`}
+                      </Typography.Text>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              flex: 1,
+              minHeight: 280,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              paddingBlock: 4,
             }}
-          />
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            onClick={() => void handleSend()}
-            loading={sending}
-            disabled={!draft.trim() || configured === false}
-            style={{ height: "auto" }}
-          />
-        </Space.Compact>
+          >
+            {messages.length === 0 && (
+              <div style={{ display: "grid", gap: 8 }}>
+                <Typography.Text type="secondary">
+                  Ask me to create or edit rules, configure integrations, or explain this page.
+                </Typography.Text>
+                <Space wrap>
+                  {suggestions.map((item) => (
+                    <Button
+                      key={item}
+                      size="small"
+                      onClick={() => setDraft(item)}
+                      disabled={configured === false}
+                    >
+                      {item}
+                    </Button>
+                  ))}
+                </Space>
+              </div>
+            )}
+
+            {messages.map((message) => {
+              const mine = message.role === "user";
+              return (
+                <div
+                  key={message.id}
+                  style={{
+                    alignSelf: mine ? "flex-end" : "flex-start",
+                    maxWidth: "92%",
+                    background: mine ? token.colorPrimary : token.colorFillSecondary,
+                    color: mine ? token.colorTextLightSolid : token.colorText,
+                    borderRadius: 12,
+                    padding: "8px 12px",
+                    whiteSpace: "pre-wrap",
+                    fontSize: 13,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {message.content}
+                </div>
+              );
+            })}
+
+            {sending && (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Thinking…
+              </Typography.Text>
+            )}
+            <div ref={bottomRef} />
+          </div>
+        )}
+
+        {!historyOpen && (
+          <Space.Compact style={{ width: "100%" }}>
+            <Input.TextArea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Message the agent…"
+              autoSize={{ minRows: 1, maxRows: 5 }}
+              disabled={sending || configured === false}
+              onPressEnter={(e) => {
+                if (!e.shiftKey) {
+                  e.preventDefault();
+                  void handleSend();
+                }
+              }}
+            />
+            <Button
+              type="primary"
+              icon={<SendOutlined />}
+              onClick={() => void handleSend()}
+              loading={sending}
+              disabled={!draft.trim() || configured === false}
+              style={{ height: "auto" }}
+            />
+          </Space.Compact>
+        )}
       </Drawer>
     </>
   );
