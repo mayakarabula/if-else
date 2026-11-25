@@ -313,13 +313,16 @@ export function toCustomIntegrationApi(spec: CustomIntegrationSpec) {
         errorCallback,
       }),
     ),
-    actions: compiled.actions?.map(({ id, label, description, fields, actionPlan, errorCallback }) => ({
-      id,
-      label,
-      description,
-      fields,
-      actionPlan,
-      errorCallback,
-    })),
+    actions: compiled.actions?.map(
+      ({ id, label, description, fields, actionPlan, errorCallback, outputs }) => ({
+        id,
+        label,
+        description,
+        fields,
+        actionPlan,
+        errorCallback,
+        outputs: outputs ?? [],
+      }),
+    ),
   };
 }

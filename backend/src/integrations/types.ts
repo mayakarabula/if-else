@@ -48,7 +48,12 @@ export interface ActionDefinition {
   /** Error fields this action may populate for CATCH handlers. */
   errorCallback: ErrorCallbackField[];
   fields: FieldSchema[];
-  execute: (config: Record<string, unknown>, context: ActionContext) => Promise<void>;
+  /** Template outputs merged under {{integration.path}} after this action runs. */
+  outputs?: TriggerOutput[];
+  execute: (
+    config: Record<string, unknown>,
+    context: ActionContext,
+  ) => Promise<Record<string, unknown> | void>;
 }
 
 export interface IntegrationDefinition {

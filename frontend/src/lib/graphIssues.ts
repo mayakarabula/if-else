@@ -53,13 +53,25 @@ export function availableTemplatePaths(
   const available = new Set<string>();
 
   for (const node of state.nodes) {
-    if (!isTriggerKind(node.kind) || !isConditionConfigured(node)) continue;
-    const integration = integrations.find((item) => item.id === node.integration);
-    const trigger = integration?.triggers?.find((item) => item.id === node.trigger);
-    if (!integration || !trigger) continue;
+    if (isTriggerKind(node.kind) && isConditionConfigured(node)) {
+      const integration = integrations.find((item) => item.id === node.integration);
+      const trigger = integration?.triggers?.find((item) => item.id === node.trigger);
+      if (integration && trigger) {
+        for (const output of trigger.outputs ?? []) {
+          available.add(`${integration.id}.${output.path}`);
+        }
+      }
+      continue;
+    }
 
-    for (const output of trigger.outputs ?? []) {
-      available.add(`${integration.id}.${output.path}`);
+    if (isActionKind(node.kind) && isActionConfigured(node) && node.kind !== "catch") {
+      const integration = integrations.find((item) => item.id === node.integration);
+      const action = integration?.actions?.find((item) => item.id === node.action);
+      if (integration && action) {
+        for (const output of action.outputs ?? []) {
+          available.add(`${integration.id}.${output.path}`);
+        }
+      }
     }
   }
 
@@ -92,20 +104,30 @@ function describeMissingPath(path: string, integrations: Integration[]): string 
     return `Uses {{${path}}} but no "${integrationId}" integration is in this flow`;
   }
 
-  const providers = (integration.triggers ?? []).filter((trigger) =>
+  const triggerProviders = (integration.triggers ?? []).filter((trigger) =>
     (trigger.outputs ?? []).some(
       (output) => output.path === outputPath || outputPath.startsWith(`${output.path}.`),
     ),
   );
+  const actionProviders = (integration.actions ?? []).filter((action) =>
+    (action.outputs ?? []).some(
+      (output) => output.path === outputPath || outputPath.startsWith(`${output.path}.`),
+    ),
+  );
 
-  if (providers.length === 0) {
+  if (triggerProviders.length === 0 && actionProviders.length === 0) {
     return `Uses {{${path}}} — ${integration.name} has no output "${outputPath}"`;
   }
 
-  const kindHint = providers.some((p) => (p.kind ?? "condition") === "data")
+  if (actionProviders.length > 0 && triggerProviders.length === 0) {
+    const labels = actionProviders.map((p) => p.label).join(" / ");
+    return `Add an ACTION for ${integration.name} · ${labels} (provides {{${path}}})`;
+  }
+
+  const kindHint = triggerProviders.some((p) => (p.kind ?? "condition") === "data")
     ? "Add a SOURCE"
     : "Add a condition or SOURCE";
-  const labels = providers.map((p) => p.label).join(" / ");
+  const labels = triggerProviders.map((p) => p.label).join(" / ");
   return `${kindHint} for ${integration.name} · ${labels} (provides {{${path}}})`;
 }
 

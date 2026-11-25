@@ -127,6 +127,8 @@ async function runActions(
   integrationConfig: Record<string, Record<string, unknown>>,
   triggerData: Record<string, unknown>,
 ) {
+  const data: Record<string, unknown> = { ...triggerData };
+
   for (const clause of actions) {
     const action = getAction(clause.integration, clause.action);
     if (!action) {
@@ -141,10 +143,19 @@ async function runActions(
       });
     }
     try {
-      await action.execute(clause.config, {
+      const result = await action.execute(clause.config, {
         integrationConfig: integrationConfig[clause.integration] ?? {},
-        triggerData,
+        triggerData: data,
       });
+      if (result && typeof result === "object" && !Array.isArray(result)) {
+        const previous = data[clause.integration];
+        data[clause.integration] = {
+          ...(previous && typeof previous === "object" && !Array.isArray(previous)
+            ? (previous as Record<string, unknown>)
+            : {}),
+          ...result,
+        };
+      }
     } catch (err) {
       if (err instanceof IntegrationError) throw err;
       throw new IntegrationError({
@@ -158,6 +169,8 @@ async function runActions(
       });
     }
   }
+
+  return data;
 }
 
 function errorMessage(err: unknown) {
