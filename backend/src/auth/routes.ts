@@ -1,9 +1,6 @@
 import { Router } from "express";
 import passport from "passport";
-import { isGoogleAuthConfigured } from "./passport.js";
 import { createLocalUser, toPublicUser, type User } from "./users.js";
-
-const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:5173";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
@@ -72,38 +69,6 @@ authRouter.post("/login", (req, res, next) => {
     });
   })(req, res, next);
 });
-
-authRouter.get("/google", (req, res, next) => {
-  if (!isGoogleAuthConfigured()) {
-    res.status(503).json({
-      error: "Google OAuth is not configured",
-      hint: "Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in backend/.env",
-    });
-    return;
-  }
-
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-    prompt: "select_account",
-  })(req, res, next);
-});
-
-authRouter.get(
-  "/google/callback",
-  (req, res, next) => {
-    if (!isGoogleAuthConfigured()) {
-      res.redirect(`${FRONTEND_URL}/login?error=not_configured`);
-      return;
-    }
-
-    passport.authenticate("google", {
-      failureRedirect: `${FRONTEND_URL}/login?error=google_failed`,
-    })(req, res, next);
-  },
-  (_req, res) => {
-    res.redirect(FRONTEND_URL);
-  },
-);
 
 authRouter.post("/logout", (req, res, next) => {
   req.logout((err) => {

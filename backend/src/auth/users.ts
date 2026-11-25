@@ -13,17 +13,9 @@ export interface User {
   email: string;
   name: string;
   passwordHash?: string;
-  googleId?: string;
   picture?: string;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface GoogleProfileInput {
-  googleId: string;
-  email: string;
-  name: string;
-  picture?: string;
 }
 
 function normalizeEmail(email: string) {
@@ -58,39 +50,6 @@ export async function findUserByEmail(email: string): Promise<User | null> {
   const normalized = normalizeEmail(email);
   const users = await loadUsers();
   return users.find((user) => user.email === normalized) ?? null;
-}
-
-export async function upsertGoogleUser(input: GoogleProfileInput): Promise<User> {
-  const users = await loadUsers();
-  const now = new Date().toISOString();
-  const email = normalizeEmail(input.email);
-  const existing =
-    users.find((user) => user.googleId === input.googleId) ??
-    users.find((user) => user.email === email);
-
-  if (existing) {
-    existing.email = email;
-    existing.name = input.name || existing.name;
-    existing.picture = input.picture ?? existing.picture;
-    existing.googleId = input.googleId;
-    existing.updatedAt = now;
-    await saveUsers(users);
-    return existing;
-  }
-
-  const user: User = {
-    id: randomUUID(),
-    googleId: input.googleId,
-    email,
-    name: input.name || emailLocalPart(email),
-    picture: input.picture,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  users.push(user);
-  await saveUsers(users);
-  return user;
 }
 
 export async function createLocalUser(input: {

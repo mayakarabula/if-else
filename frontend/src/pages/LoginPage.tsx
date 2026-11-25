@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Alert, Button, Divider, Form, Input, Space, Tooltip, Typography, theme } from "antd";
+import { Alert, Button, Form, Input, Space, Tooltip, Typography, theme } from "antd";
 import {
-  GoogleOutlined,
   LockOutlined,
   MailOutlined,
   MoonOutlined,
@@ -13,11 +12,6 @@ import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { useThemeMode } from "../theme";
 
-const ERROR_MESSAGES: Record<string, string> = {
-  google_failed: "Google sign-in failed. Please try again.",
-  not_configured: "Google OAuth is not configured on the server.",
-};
-
 type Mode = "login" | "register";
 
 export function LoginPage() {
@@ -26,7 +20,6 @@ export function LoginPage() {
   const { mode: colorMode, toggleMode } = useThemeMode();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const error = params.get("error");
   const next = params.get("next");
 
   const [mode, setMode] = useState<Mode>("login");
@@ -108,18 +101,12 @@ export function LoginPage() {
             </Typography.Title>
             <Typography.Text type="secondary">
               {mode === "login"
-                ? "Use email and password, or continue with Google."
+                ? "Use your email and password."
                 : "Register with email and password to get started."}
             </Typography.Text>
           </div>
 
-          {(error || formError) && (
-            <Alert
-              type="error"
-              showIcon
-              message={formError ?? ERROR_MESSAGES[error!] ?? "Sign-in failed."}
-            />
-          )}
+          {formError && <Alert type="error" showIcon message={formError} />}
 
           <Form
             layout="vertical"
@@ -209,14 +196,6 @@ export function LoginPage() {
               </>
             )}
           </Typography.Paragraph>
-
-          <Divider plain style={{ margin: 0 }}>
-            or
-          </Divider>
-
-          <Button type="default" size="large" block icon={<GoogleOutlined />} href="/api/auth/google">
-            Continue with Google
-          </Button>
         </Space>
       </div>
     </div>
