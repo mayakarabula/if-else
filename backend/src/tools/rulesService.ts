@@ -3,6 +3,7 @@ import yaml from "js-yaml";
 import {
   deleteCustomIntegrationSpec,
   getCustomIntegrationSpec,
+  isReservedIntegrationId,
   upsertCustomIntegrationSpec,
 } from "../integrations/custom/store.js";
 import type { CustomIntegrationSpec } from "../integrations/custom/types.js";
@@ -172,6 +173,11 @@ export async function serviceCreateCustomIntegration(input: CustomIntegrationSpe
 export async function serviceUpdateCustomIntegration(input: CustomIntegrationSpec) {
   const existing = await getCustomIntegrationSpec(input.id);
   if (!existing) {
+    if (isReservedIntegrationId(input.id)) {
+      throw new Error(
+        `"${input.id}" is a built-in integration — use list_integration_sources / get_integration_source / update_integration_source to edit its TypeScript (e.g. ${input.id}/actions.ts)`,
+      );
+    }
     throw new Error(`Custom integration not found: ${input.id}`);
   }
   const saved = await upsertCustomIntegrationSpec({
