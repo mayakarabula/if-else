@@ -1,5 +1,10 @@
 import type { CustomIntegrationSpec } from "../integrations/custom/types.js";
 import {
+  serviceGetIntegrationSource,
+  serviceListIntegrationSources,
+  serviceUpdateIntegrationSource,
+} from "../tools/integrationSource.js";
+import {
   parseRuleDocument,
   redactIntegrationConfig,
   ruleSummary,
@@ -335,6 +340,67 @@ export const chatTools: ChatToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "list_integration_sources",
+      description:
+        "List TypeScript source files for built-in integrations under backend/src/integrations (actions.ts, triggers.ts, registry.ts, …). Use before editing built-in code. For custom HTTP integrations use get_custom_integration instead.",
+      parameters: {
+        type: "object",
+        properties: {
+          integrationId: {
+            type: "string",
+            description: "Optional built-in id (e.g. cursor) to filter; omit to list all editable sources",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_integration_source",
+      description:
+        "Read one built-in integration TypeScript file. path is relative to backend/src/integrations (e.g. cursor/actions.ts or registry.ts).",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative path under integrations/, e.g. cursor/actions.ts",
+          },
+        },
+        required: ["path"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_integration_source",
+      description:
+        "Write/replace built-in integration TypeScript (the live action/trigger code). path relative to backend/src/integrations. Use create:true for new files. After writing, api+worker must reload (tsx watch does this in local dev). Do not use this for custom HTTP YAML — use update_integration.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Relative path under integrations/, e.g. cursor/actions.ts",
+          },
+          content: { type: "string", description: "Full new file contents" },
+          create: {
+            type: "boolean",
+            description: "Allow creating a new file (default false)",
+          },
+        },
+        required: ["path", "content"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_runs",
       description: "List recent rule run logs.",
       parameters: {
@@ -474,6 +540,33 @@ export async function executeChatTool(
         const result = await serviceDeleteCustomIntegration(id);
         publishChatMutations(["integrations"], { integrationId: id });
         return { ok: true, result, mutations: ["integrations"], integrationId: id };
+      }
+      case "list_integration_sources": {
+        const integrationId =
+          typeof args.integrationId === "string" && args.integrationId.trim()
+            ? args.integrationId.trim()
+            : undefined;
+        return {
+          ok: true,
+          result: await serviceListIntegrationSources(integrationId),
+          mutations: [],
+        };
+      }
+      case "get_integration_source": {
+        return {
+          ok: true,
+          result: await serviceGetIntegrationSource(String(args.path ?? "")),
+          mutations: [],
+        };
+      }
+      case "update_integration_source": {
+        const result = await serviceUpdateIntegrationSource({
+          path: String(args.path ?? ""),
+          content: String(args.content ?? ""),
+          create: Boolean(args.create),
+        });
+        publishChatMutations(["integrations"]);
+        return { ok: true, result, mutations: ["integrations"] };
       }
       case "list_runs": {
         const limit = typeof args.limit === "number" ? args.limit : 20;
