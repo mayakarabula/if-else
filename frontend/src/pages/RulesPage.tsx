@@ -3,55 +3,8 @@ import { Link } from "react-router-dom";
 import { Alert, App, Button, Card, Col, Empty, Row, Space, Spin, Tag, Typography } from "antd";
 import { PlusOutlined, PlayCircleOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api, getIntegration, type Integration, type Rule } from "../api/client";
-import { FlowArrow, IntegrationIcon, Toggle } from "../components/ui";
-import {
-  normalizeIf,
-  normalizeSourceAttachTo,
-  normalizeThen,
-  type RuleIfClause,
-  type SourceAttachTo,
-} from "../lib/rules";
-
-function isDataSourceClause(clause: RuleIfClause, integrations: Integration[]): boolean {
-  const attach = normalizeSourceAttachTo(clause.attachTo);
-  if (attach !== "if") return true;
-  const integration = integrations.find((item) => item.id === clause.integration);
-  const trigger = integration?.triggers?.find((item) => item.id === clause.trigger);
-  return trigger?.kind === "data";
-}
-
-function sourcesFor(
-  clauses: RuleIfClause[],
-  integrations: Integration[],
-  target: SourceAttachTo,
-): RuleIfClause[] {
-  return clauses.filter((clause) => {
-    if (!isDataSourceClause(clause, integrations)) return false;
-    return normalizeSourceAttachTo(clause.attachTo) === target;
-  });
-}
-
-function ClauseIcons({
-  prefix,
-  clauses,
-  integrations,
-}: {
-  prefix: string;
-  clauses: RuleIfClause[] | { integration: string }[];
-  integrations: Integration[];
-}) {
-  return (
-    <>
-      {clauses.map((clause, index) => (
-        <IntegrationIcon
-          key={`${prefix}-${clause.integration}-${index}`}
-          integration={getIntegration(integrations, clause.integration)}
-          size="sm"
-        />
-      ))}
-    </>
-  );
-}
+import { IntegrationIcon, Toggle } from "../components/ui";
+import { normalizeIf, normalizeThen } from "../lib/rules";
 
 function RuleCard({
   rule,
@@ -67,15 +20,12 @@ function RuleCard({
   onDelete: (id: string) => void;
 }) {
   const ifNormalized = normalizeIf(rule.if);
-  const allIfClauses = ifNormalized.clauses;
-  const conditionClauses = allIfClauses.filter((clause) => !isDataSourceClause(clause, integrations));
-  const thenClauses = normalizeThen(rule.action ?? rule.then).all;
-  const elseClauses = normalizeThen(rule.else).all;
-  const catchClauses = normalizeThen(rule.catch).all;
-  const actionSources = sourcesFor(allIfClauses, integrations, "action");
-  const elseSources = sourcesFor(allIfClauses, integrations, "else");
-  const catchSources = sourcesFor(allIfClauses, integrations, "catch");
-  const ifSources = sourcesFor(allIfClauses, integrations, "if");
+  const iconClauses = [
+    ...ifNormalized.clauses.map((clause) => clause.integration),
+    ...normalizeThen(rule.action ?? rule.then).all.map((clause) => clause.integration),
+    ...normalizeThen(rule.else).all.map((clause) => clause.integration),
+    ...normalizeThen(rule.catch).all.map((clause) => clause.integration),
+  ];
 
   const everyClause = ifNormalized.clauses.find(
     (clause) => clause.integration === "time" && clause.trigger === "every",
@@ -120,33 +70,13 @@ function RuleCard({
       ]}
     >
       <Space size={8} wrap align="center">
-        <ClauseIcons prefix="if" clauses={conditionClauses} integrations={integrations} />
-        <ClauseIcons prefix="if-source" clauses={ifSources} integrations={integrations} />
-        {(thenClauses.length > 0 || actionSources.length > 0) && (
-          <>
-            <FlowArrow />
-            <ClauseIcons prefix="action-source" clauses={actionSources} integrations={integrations} />
-            <ClauseIcons prefix="action" clauses={thenClauses} integrations={integrations} />
-          </>
-        )}
-        {(elseClauses.length > 0 || elseSources.length > 0) && (
-          <>
-            <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>
-              ELSE
-            </Typography.Text>
-            <ClauseIcons prefix="else-source" clauses={elseSources} integrations={integrations} />
-            <ClauseIcons prefix="else" clauses={elseClauses} integrations={integrations} />
-          </>
-        )}
-        {(catchClauses.length > 0 || catchSources.length > 0) && (
-          <>
-            <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 700 }}>
-              CATCH
-            </Typography.Text>
-            <ClauseIcons prefix="catch-source" clauses={catchSources} integrations={integrations} />
-            <ClauseIcons prefix="catch" clauses={catchClauses} integrations={integrations} />
-          </>
-        )}
+        {iconClauses.map((integrationId, index) => (
+          <IntegrationIcon
+            key={`${integrationId}-${index}`}
+            integration={getIntegration(integrations, integrationId)}
+            size="sm"
+          />
+        ))}
       </Space>
     </Card>
   );
