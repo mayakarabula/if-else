@@ -66,6 +66,22 @@ function formatSessionTime(iso: string): string {
   }
 }
 
+function ThinkingIndicator() {
+  return (
+    <div className="agent-thinking" role="status" aria-live="polite" aria-label="Agent is thinking">
+      <span className="agent-thinking-icon" aria-hidden>
+        <RobotOutlined />
+      </span>
+      <span className="agent-thinking-dots" aria-hidden>
+        <span />
+        <span />
+        <span />
+      </span>
+      <span>Thinking</span>
+    </div>
+  );
+}
+
 export function AgentChatPanel() {
   const { token } = theme.useToken();
   const location = useLocation();
@@ -296,15 +312,18 @@ export function AgentChatPanel() {
       <FloatButton
         icon={<RobotOutlined />}
         type="primary"
-        tooltip="Agent"
+        tooltip={sending ? "Agent is thinking…" : "Agent"}
         onClick={() => setOpen(true)}
+        className={sending ? "agent-fab-thinking" : undefined}
         style={{ right: 24, bottom: 24 }}
       />
 
       <Drawer
         title={
           <Space>
-            <RobotOutlined />
+            <span className={sending ? "agent-thinking-icon" : undefined} style={{ display: "inline-flex" }}>
+              <RobotOutlined />
+            </span>
             <span>Agent</span>
           </Space>
         }
@@ -455,11 +474,7 @@ export function AgentChatPanel() {
               );
             })}
 
-            {sending && (
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Thinking…
-              </Typography.Text>
-            )}
+            {sending && <ThinkingIndicator />}
             <div ref={bottomRef} />
           </div>
         )}

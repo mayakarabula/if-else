@@ -96,3 +96,73 @@ html[data-theme="dark"] body {
   border-color: #8b4d3b;
   color: #fff;
 }
+
+@keyframes agent-thinking-dot {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes agent-thinking-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.72;
+  }
+}
+
+.agent-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  max-width: 92%;
+  border-radius: 12px;
+  padding: 10px 14px;
+  background: var(--app-paper, #efe9df);
+  color: var(--app-ink-muted, #6b6458);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-thinking-icon {
+  display: inline-flex;
+  animation: agent-thinking-pulse 1.4s ease-in-out infinite;
+}
+
+.agent-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.agent-thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--app-primary, #a07a3a);
+  animation: agent-thinking-dot 1.05s ease-in-out infinite;
+}
+
+.agent-thinking-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.agent-thinking-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.agent-fab-thinking .ant-float-btn-body {
+  animation: agent-thinking-pulse 1.4s ease-in-out infinite;
+}
