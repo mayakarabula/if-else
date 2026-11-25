@@ -354,7 +354,7 @@ export function RuleGraph({
       (viewport.h - pad) / Math.max(height, 1),
     );
     // Prefer a closer default than 100% when the graph is small.
-    return Math.min(1.35, fit);
+    return Math.min(1.25, fit);
   }
 
   useEffect(() => {
