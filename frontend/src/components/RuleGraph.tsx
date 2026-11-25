@@ -41,6 +41,7 @@ import {
 import { formatFilterSummary } from "../lib/filters";
 import { analyzeGraphIssues, type GraphIssue } from "../lib/graphIssues";
 import { clauseLabel, formatClauseOverview } from "../lib/rules";
+import { resolveIntegrationIcon } from "./ui";
 import { useThemeMode } from "../theme";
 
 const NODE_ICONS: Record<GraphNodeKind, ReactNode> = {
@@ -55,9 +56,30 @@ const NODE_ICONS: Record<GraphNodeKind, ReactNode> = {
   catch: <ExceptionOutlined />,
 };
 
-function iconForKindLabel(title: string, kind: GraphNodeKind): ReactNode {
+function nodeCardIcon(
+  node: GraphNode,
+  integrations: Integration[],
+  title: string,
+): ReactNode {
   if (title === "AND") return <BranchesOutlined />;
-  return NODE_ICONS[kind];
+
+  if (isEventKind(node.kind)) {
+    const source = String(node.config.source ?? "webhook");
+    if (source === "homeassistant") {
+      const ha = integrations.find((item) => item.id === "homeassistant");
+      return resolveIntegrationIcon(ha?.icon ?? "home", "H");
+    }
+    return resolveIntegrationIcon("webhook", "W");
+  }
+
+  if (node.integration) {
+    const integration = integrations.find((item) => item.id === node.integration);
+    if (integration) {
+      return resolveIntegrationIcon(integration.icon, integration.name[0] ?? "?");
+    }
+  }
+
+  return NODE_ICONS[node.kind];
 }
 
 const ISSUE_RED = "#c45c4a";
@@ -623,7 +645,7 @@ export function RuleGraph({
                     }}
                   >
                     <span style={{ display: "inline-flex", fontSize: 13, flexShrink: 0 }}>
-                      {iconForKindLabel(title, item.node.kind)}
+                      {nodeCardIcon(item.node, integrations, title)}
                     </span>
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
                   </div>
