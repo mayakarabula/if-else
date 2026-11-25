@@ -1,6 +1,16 @@
 import { failStep } from "../errors.js";
 import type { ActionDefinition } from "../types.js";
 
+const CURSOR_API = "https://api.cursor.com/v1";
+const POLL_MS = 2_000;
+const MAX_WAIT_MS = 4 * 60_000;
+const ACTIVE_STATUSES = new Set([
+  "CREATING",
+  "RUNNING",
+  "WAITING_FOR_BACKGROUND_WORK",
+]);
+const TERMINAL_STATUSES = new Set(["FINISHED", "ERROR", "CANCELLED", "EXPIRED"]);
+
 function interpolate(template: string, data: Record<string, unknown>): string {
   const context = { ...data, trigger: data };
   return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, path: string) => {
@@ -54,16 +64,108 @@ function requireApiKey(integrationConfig: Record<string, unknown>, step: ActionD
   return key;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForRunText(
+  apiKey: string,
+  agentId: string,
+  runId: string,
+  extras: { repoUrl: string },
+): Promise<string> {
+  const started = Date.now();
+  while (Date.now() - started < MAX_WAIT_MS) {
+    let res: Response;
+    try {
+      res = await fetch(`${CURSOR_API}/agents/${agentId}/runs/${runId}`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+    } catch (err) {
+      failStep({
+        message: err instanceof Error ? err.message : "Cursor run poll failed",
+        code: "cursor.poll_failed",
+        integration: "cursor",
+        step: launchCloudAgent.id,
+        stepLabel: launchCloudAgent.label,
+        kind: "action",
+        plan: launchCloudAgent.actionPlan,
+        extras: { ...extras, agentId, runId },
+      });
+    }
+
+    if (!res.ok) {
+      const body = await res.text();
+      failStep({
+        message: `Cursor run poll error ${res.status}: ${body}`,
+        code: "cursor.poll_error",
+        integration: "cursor",
+        step: launchCloudAgent.id,
+        stepLabel: launchCloudAgent.label,
+        kind: "action",
+        plan: launchCloudAgent.actionPlan,
+        extras: { ...extras, agentId, runId, status: res.status },
+      });
+    }
+
+    const run = (await res.json()) as { id?: string; status?: string; result?: string };
+    const status = String(run.status ?? "");
+    if (TERMINAL_STATUSES.has(status)) {
+      if (status !== "FINISHED") {
+        failStep({
+          message: `Cursor run ${status}${run.result ? `: ${run.result}` : ""}`,
+          code: "cursor.run_failed",
+          integration: "cursor",
+          step: launchCloudAgent.id,
+          stepLabel: launchCloudAgent.label,
+          kind: "action",
+          plan: launchCloudAgent.actionPlan,
+          extras: { ...extras, agentId, runId, status },
+        });
+      }
+      return String(run.result ?? "").trim();
+    }
+    if (!ACTIVE_STATUSES.has(status) && status) {
+      // Unknown but non-active — treat as terminal without text.
+      return String(run.result ?? "").trim();
+    }
+    await sleep(POLL_MS);
+  }
+
+  failStep({
+    message: "Cursor agent timed out waiting for a reply",
+    code: "cursor.timeout",
+    integration: "cursor",
+    step: launchCloudAgent.id,
+    stepLabel: launchCloudAgent.label,
+    kind: "action",
+    plan: launchCloudAgent.actionPlan,
+    extras: { ...extras, agentId, runId },
+  });
+}
+
 export const launchCloudAgent: ActionDefinition = {
   id: "launch_cloud_agent",
   label: "Launch cloud agent",
-  description: "Start a Cursor Cloud Agent on a repository with a prompt (Agent SDK / Cloud Agents API).",
+  description:
+    "Start a Cursor Cloud Agent, wait for it to finish, and expose the reply as {{cursor.text}}.",
   actionPlan: [
     "Load the Cursor API key from Integrations (or CURSOR_API_KEY)",
     "Interpolate the prompt and repository URL",
-    "POST /v1/agents on api.cursor.com and confirm the agent was created",
+    "POST /v1/agents on api.cursor.com",
+    "Poll the run until finished and capture the reply text",
   ],
   errorCallback: CURSOR_ERROR_CALLBACK,
+  outputs: [
+    {
+      path: "text",
+      label: "Agent reply text",
+      description: "Final message from the finished cloud agent run",
+    },
+    { path: "agentId", label: "Agent ID" },
+    { path: "runId", label: "Run ID" },
+    { path: "repoUrl", label: "Repository URL" },
+  ],
   fields: [
     {
       key: "prompt",
@@ -130,6 +232,7 @@ export const launchCloudAgent: ActionDefinition = {
       interpolate(String(config.startingRef ?? "main"), context.triggerData).trim() || "main";
     const autoCreatePR = String(config.autoCreatePR ?? "true") !== "false";
     const name = interpolate(String(config.name ?? ""), context.triggerData).trim();
+    const extras = { repoUrl };
 
     const body: Record<string, unknown> = {
       prompt: { text: prompt },
@@ -142,7 +245,7 @@ export const launchCloudAgent: ActionDefinition = {
 
     let res: Response;
     try {
-      res = await fetch("https://api.cursor.com/v1/agents", {
+      res = await fetch(`${CURSOR_API}/agents`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -159,7 +262,7 @@ export const launchCloudAgent: ActionDefinition = {
         stepLabel: launchCloudAgent.label,
         kind: "action",
         plan: launchCloudAgent.actionPlan,
-        extras: { repoUrl, agentId: "", runId: "" },
+        extras: { ...extras, agentId: "", runId: "" },
       });
     }
 
@@ -173,7 +276,7 @@ export const launchCloudAgent: ActionDefinition = {
         stepLabel: launchCloudAgent.label,
         kind: "action",
         plan: launchCloudAgent.actionPlan,
-        extras: { repoUrl, agentId: "", runId: "", status: res.status },
+        extras: { ...extras, agentId: "", runId: "", status: res.status },
       });
     }
 
@@ -182,7 +285,22 @@ export const launchCloudAgent: ActionDefinition = {
       run?: { id?: string };
       id?: string;
     };
-    // Soft-success — IDs are useful in logs / catch payloads if something fails later.
-    void payload;
+    const agentId = String(payload.agent?.id ?? payload.id ?? "").trim();
+    const runId = String(payload.run?.id ?? "").trim();
+    if (!agentId || !runId) {
+      failStep({
+        message: "Cursor API did not return agent/run ids",
+        code: "cursor.missing_ids",
+        integration: "cursor",
+        step: launchCloudAgent.id,
+        stepLabel: launchCloudAgent.label,
+        kind: "action",
+        plan: launchCloudAgent.actionPlan,
+        extras: { ...extras, agentId, runId },
+      });
+    }
+
+    const text = await waitForRunText(apiKey, agentId, runId, extras);
+    return { text, agentId, runId, repoUrl };
   },
 };

@@ -180,13 +180,14 @@ export function listIntegrationsForApi() {
       actionPlan,
       errorCallback,
     })),
-    actions: actions?.map(({ id, label, description, fields, actionPlan, errorCallback }) => ({
+    actions: actions?.map(({ id, label, description, fields, actionPlan, errorCallback, outputs }) => ({
       id,
       label,
       description,
       fields,
       actionPlan,
       errorCallback,
+      outputs: outputs ?? [],
     })),
   }));
 

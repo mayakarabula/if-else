@@ -14,31 +14,57 @@ export interface ArgumentItem {
 const formControlMax = 360;
 
 export function buildArgumentItems(
-  clauses: { integration: string | null; trigger: string | null }[],
+  clauses: {
+    integration: string | null;
+    trigger?: string | null;
+    action?: string | null;
+  }[],
   integrations: Integration[],
 ): ArgumentItem[] {
   const items: ArgumentItem[] = [];
   const seen = new Set<string>();
 
   for (const clause of clauses) {
-    if (!clause.integration || !clause.trigger) continue;
+    if (!clause.integration) continue;
 
-    const groupKey = `${clause.integration}:${clause.trigger}`;
-    if (seen.has(groupKey)) continue;
-    seen.add(groupKey);
+    if (clause.trigger) {
+      const groupKey = `trigger:${clause.integration}:${clause.trigger}`;
+      if (!seen.has(groupKey)) {
+        seen.add(groupKey);
+        const integration = integrations.find((item) => item.id === clause.integration);
+        const trigger = integration?.triggers?.find((item) => item.id === clause.trigger);
+        if (integration && trigger?.outputs?.length) {
+          for (const output of trigger.outputs) {
+            items.push({
+              token: `{{${integration.id}.${output.path}}}`,
+              short: `${integration.id}.${output.path}`,
+              label: output.label,
+              description: output.description,
+              groupLabel: `${integration.name} · ${trigger.label}`,
+            });
+          }
+        }
+      }
+    }
 
-    const integration = integrations.find((item) => item.id === clause.integration);
-    const trigger = integration?.triggers?.find((item) => item.id === clause.trigger);
-    if (!integration || !trigger?.outputs?.length) continue;
-
-    for (const output of trigger.outputs) {
-      items.push({
-        token: `{{${integration.id}.${output.path}}}`,
-        short: `${integration.id}.${output.path}`,
-        label: output.label,
-        description: output.description,
-        groupLabel: `${integration.name} · ${trigger.label}`,
-      });
+    if (clause.action) {
+      const groupKey = `action:${clause.integration}:${clause.action}`;
+      if (!seen.has(groupKey)) {
+        seen.add(groupKey);
+        const integration = integrations.find((item) => item.id === clause.integration);
+        const action = integration?.actions?.find((item) => item.id === clause.action);
+        if (integration && action?.outputs?.length) {
+          for (const output of action.outputs) {
+            items.push({
+              token: `{{${integration.id}.${output.path}}}`,
+              short: `${integration.id}.${output.path}`,
+              label: output.label,
+              description: output.description,
+              groupLabel: `${integration.name} · ${action.label}`,
+            });
+          }
+        }
+      }
     }
   }
 

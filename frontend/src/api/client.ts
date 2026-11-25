@@ -38,6 +38,7 @@ export interface ActionMeta {
   fields: FieldSchema[];
   actionPlan?: string[];
   errorCallback?: ErrorCallbackField[];
+  outputs?: TriggerOutput[];
 }
 
 export interface Integration {

@@ -163,17 +163,20 @@ export function GraphNodeConfigModal({
     });
   }, [eventSource, graph.nodes, integrations]);
 
-  const ifClauses = graph.nodes
-    .filter((n) => isTriggerKind(n.kind))
-    .map((n) => ({
-      key: n.id,
-      integration: n.integration,
-      trigger: n.trigger,
-      config: n.config,
-      slot: n.slot,
-    }));
+  const templateSourceClauses = useMemo(
+    () => [
+      ...graph.nodes
+        .filter((n) => isTriggerKind(n.kind))
+        .map((n) => ({ integration: n.integration, trigger: n.trigger })),
+      ...graph.nodes
+        .filter((n) => n.kind === "action" || n.kind === "else")
+        .filter((n) => !node || n.id !== node.id)
+        .map((n) => ({ integration: n.integration, action: n.action })),
+    ],
+    [graph.nodes, node],
+  );
   const argumentItems = useMemo(() => {
-    const items = buildArgumentItems(ifClauses, integrations);
+    const items = buildArgumentItems(templateSourceClauses, integrations);
     if (node?.kind !== "catch") return items;
 
     const seen = new Set<string>();
@@ -207,7 +210,7 @@ export function GraphNodeConfigModal({
       });
     }
     return items;
-  }, [ifClauses, integrations, node?.kind]);
+  }, [templateSourceClauses, integrations, node?.kind]);
 
   const options = useMemo(() => {
     const query = search.trim().toLowerCase();
