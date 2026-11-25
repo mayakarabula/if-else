@@ -318,6 +318,21 @@ export function RuleGraph({
 
   const PATH_BLUE = mode === "dark" ? "#8eb6e0" : "#7aa2d4";
   const graphHeight = isMobile ? Math.min(Math.max(height + 48, 520), 720) : 440;
+  const legendKinds = useMemo(() => {
+    const order: GraphNodeKind[] = [
+      "event",
+      "filter",
+      "if",
+      "and",
+      "or",
+      "source",
+      "action",
+      "else",
+      "catch",
+    ];
+    const present = new Set(state.nodes.map((node) => node.kind));
+    return order.filter((kind) => present.has(kind));
+  }, [state.nodes]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -332,6 +347,16 @@ export function RuleGraph({
     return () => ro.disconnect();
   }, [graphHeight]);
 
+  function fitScaleForViewport() {
+    const pad = 28;
+    const fit = Math.min(
+      (viewport.w - pad) / Math.max(width, 1),
+      (viewport.h - pad) / Math.max(height, 1),
+    );
+    // Prefer a closer default than 100% when the graph is small.
+    return Math.min(1.35, fit);
+  }
+
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
@@ -340,7 +365,7 @@ export function RuleGraph({
 
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.35, 2.5])
+      .scaleExtent([0.35, 3])
       .on("zoom", (event) => {
         svg.select<SVGGElement>("g.viewport").attr("transform", event.transform.toString());
       });
@@ -348,11 +373,7 @@ export function RuleGraph({
     zoomRef.current = zoom;
     svg.call(zoom);
 
-    const scale = Math.min(
-      1,
-      (viewport.w - 40) / Math.max(width, 1),
-      (viewport.h - 40) / Math.max(height, 1),
-    );
+    const scale = fitScaleForViewport();
     const tx = (viewport.w - width * scale) / 2;
     const ty = Math.max(16, (viewport.h - height * scale) / 2);
     svg.transition().duration(350).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
@@ -371,11 +392,7 @@ export function RuleGraph({
   function resetZoom() {
     const el = svgRef.current;
     if (!el || !zoomRef.current) return;
-    const scale = Math.min(
-      1,
-      (viewport.w - 40) / Math.max(width, 1),
-      (viewport.h - 40) / Math.max(height, 1),
-    );
+    const scale = fitScaleForViewport();
     const tx = (viewport.w - width * scale) / 2;
     const ty = Math.max(16, (viewport.h - height * scale) / 2);
     d3.select<SVGSVGElement, unknown>(el)
@@ -729,7 +746,7 @@ export function RuleGraph({
         }}
       >
         <Space size={8} wrap={!isMobile}>
-          {(["event", "filter", "if", "and", "or", "source", "action", "else", "catch"] as GraphNodeKind[]).map((kind) => (
+          {legendKinds.map((kind) => (
             <span
               key={kind}
               style={{
