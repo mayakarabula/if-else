@@ -41,6 +41,85 @@ export interface ChatToolDefinition {
   };
 }
 
+const customFieldSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    key: { type: "string" },
+    label: { type: "string" },
+    type: { type: "string", enum: ["text", "number", "textarea", "select"] },
+    required: { type: "boolean" },
+    placeholder: { type: "string" },
+  },
+  required: ["key", "label"],
+  additionalProperties: true,
+};
+
+const customHttpRequestSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+    url: { type: "string" },
+    headers: { type: "object", additionalProperties: { type: "string" } },
+    body: { type: "string" },
+    successStatuses: { type: "array", items: { type: "number" } },
+  },
+  required: ["url"],
+  additionalProperties: false,
+};
+
+const customActionSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    label: { type: "string" },
+    description: { type: "string" },
+    fields: { type: "array", items: customFieldSchema },
+    request: customHttpRequestSchema,
+  },
+  required: ["id", "label", "request"],
+  additionalProperties: false,
+};
+
+const customTriggerSchema: JsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    label: { type: "string" },
+    description: { type: "string" },
+    kind: { type: "string", enum: ["condition", "data"] },
+    fields: { type: "array", items: customFieldSchema },
+    fireWhenPath: { type: "string" },
+    request: customHttpRequestSchema,
+  },
+  required: ["id", "label", "request"],
+  additionalProperties: false,
+};
+
+const customIntegrationDefProperties: JsonSchema = {
+  name: { type: "string" },
+  icon: {
+    type: "string",
+    description: "Optional icon key: send, mail, cloud, home, script, …",
+  },
+  color: { type: "string", description: "Hex color e.g. #5865F2" },
+  description: { type: "string" },
+  configFields: {
+    type: "array",
+    description: "Secrets/settings shown under Integrations (e.g. webhookUrl)",
+    items: customFieldSchema,
+  },
+  actions: {
+    type: "array",
+    description: "HTTP actions for ACTION/ELSE/CATCH (request url/headers/body are the integration code)",
+    items: customActionSchema,
+  },
+  triggers: {
+    type: "array",
+    description: "Optional HTTP conditions/sources",
+    items: customTriggerSchema,
+  },
+};
+
 export const chatTools: ChatToolDefinition[] = [
   {
     type: "function",
@@ -201,85 +280,7 @@ export const chatTools: ChatToolDefinition[] = [
             type: "string",
             description: "Stable id, e.g. discord or slack_webhook (letters/digits/_/-)",
           },
-          name: { type: "string" },
-          icon: {
-            type: "string",
-            description: "Optional icon key: send, mail, cloud, home, script, …",
-          },
-          color: { type: "string", description: "Hex color e.g. #5865F2" },
-          description: { type: "string" },
-          configFields: {
-            type: "array",
-            description: "Secrets/settings shown under Integrations (e.g. webhookUrl)",
-            items: {
-              type: "object",
-              properties: {
-                key: { type: "string" },
-                label: { type: "string" },
-                type: { type: "string", enum: ["text", "number", "textarea", "select"] },
-                required: { type: "boolean" },
-                placeholder: { type: "string" },
-              },
-              required: ["key", "label"],
-              additionalProperties: true,
-            },
-          },
-          actions: {
-            type: "array",
-            description: "HTTP actions for ACTION/ELSE/CATCH",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                label: { type: "string" },
-                description: { type: "string" },
-                fields: { type: "array" },
-                request: {
-                  type: "object",
-                  properties: {
-                    method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
-                    url: { type: "string" },
-                    headers: { type: "object", additionalProperties: { type: "string" } },
-                    body: { type: "string" },
-                    successStatuses: { type: "array", items: { type: "number" } },
-                  },
-                  required: ["url"],
-                  additionalProperties: false,
-                },
-              },
-              required: ["id", "label", "request"],
-              additionalProperties: false,
-            },
-          },
-          triggers: {
-            type: "array",
-            description: "Optional HTTP conditions/sources",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                label: { type: "string" },
-                description: { type: "string" },
-                kind: { type: "string", enum: ["condition", "data"] },
-                fields: { type: "array" },
-                fireWhenPath: { type: "string" },
-                request: {
-                  type: "object",
-                  properties: {
-                    method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
-                    url: { type: "string" },
-                    headers: { type: "object", additionalProperties: { type: "string" } },
-                    body: { type: "string" },
-                    successStatuses: { type: "array", items: { type: "number" } },
-                  },
-                  required: ["url"],
-                  additionalProperties: false,
-                },
-              },
-              required: ["id", "label", "request"],
-              additionalProperties: false,
-            },
-          },
+          ...customIntegrationDefProperties,
         },
         required: ["id", "name"],
         additionalProperties: false,
@@ -290,18 +291,13 @@ export const chatTools: ChatToolDefinition[] = [
     type: "function",
     function: {
       name: "update_integration",
-      description: "Update an existing custom HTTP integration definition (not built-ins).",
+      description:
+        "Modify an existing custom HTTP integration's definition/code (request URLs, headers, bodies, actions, triggers, configFields, name/icon/color). Not for built-ins. Call get_custom_integration first; omitted arrays keep previous values, provided arrays replace that section entirely.",
       parameters: {
         type: "object",
         properties: {
-          id: { type: "string" },
-          name: { type: "string" },
-          icon: { type: "string" },
-          color: { type: "string" },
-          description: { type: "string" },
-          configFields: { type: "array" },
-          actions: { type: "array" },
-          triggers: { type: "array" },
+          id: { type: "string", description: "Existing custom integration id" },
+          ...customIntegrationDefProperties,
         },
         required: ["id"],
         additionalProperties: false,
@@ -312,7 +308,8 @@ export const chatTools: ChatToolDefinition[] = [
     type: "function",
     function: {
       name: "get_custom_integration",
-      description: "Get the full custom integration definition by id.",
+      description:
+        "Get the full custom integration definition (HTTP request templates and fields) by id. Use before update_integration.",
       parameters: {
         type: "object",
         properties: { id: { type: "string" } },
@@ -325,7 +322,8 @@ export const chatTools: ChatToolDefinition[] = [
     type: "function",
     function: {
       name: "delete_integration",
-      description: "Delete a custom HTTP integration (built-ins cannot be deleted).",
+      description:
+        "Remove a custom HTTP integration from the catalog and drop its saved secrets. Built-ins cannot be deleted. Prefer confirming with the user first.",
       parameters: {
         type: "object",
         properties: { id: { type: "string" } },

@@ -173,7 +173,7 @@ export function buildCursorToolProtocolPrompt(systemPrompt: string): string {
   return `${systemPrompt}
 
 You are running as a Cursor Cloud Agent for the if-else product assistant.
-You cannot edit the if-else app repo directly for these requests — use the JSON tool protocol below so the host can apply changes.
+Do not edit the if-else app source repo for product data changes. Use the JSON tool protocol below so the host can apply them — including create/update/delete of custom HTTP integrations (their request templates are the integration "code").
 
 Response format — reply with ONE JSON object only (no markdown fences):
 1) Call tools:
