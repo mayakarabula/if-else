@@ -56,30 +56,63 @@ const NODE_ICONS: Record<GraphNodeKind, ReactNode> = {
   catch: <ExceptionOutlined />,
 };
 
-function nodeCardIcon(
+function nodeCardIconBadge(
   node: GraphNode,
   integrations: Integration[],
   title: string,
+  kindColor: string,
 ): ReactNode {
-  if (title === "AND") return <BranchesOutlined />;
-
-  if (isEventKind(node.kind)) {
-    const source = String(node.config.source ?? "webhook");
-    if (source === "homeassistant") {
-      const ha = integrations.find((item) => item.id === "homeassistant");
-      return resolveIntegrationIcon(ha?.icon ?? "home", "H");
-    }
-    return resolveIntegrationIcon("webhook", "W");
-  }
+  let glyph: ReactNode | null = null;
+  let background = kindColor;
 
   if (node.integration) {
     const integration = integrations.find((item) => item.id === node.integration);
     if (integration) {
-      return resolveIntegrationIcon(integration.icon, integration.name[0] ?? "?");
+      glyph = resolveIntegrationIcon(integration.icon, integration.name[0] ?? "?");
+      background = integration.color || kindColor;
+    }
+  } else if (isEventKind(node.kind)) {
+    const source = String(node.config.source ?? "webhook");
+    if (source === "homeassistant") {
+      const ha = integrations.find((item) => item.id === "homeassistant");
+      glyph = resolveIntegrationIcon(ha?.icon ?? "home", "H");
+      background = ha?.color ?? kindColor;
+    } else {
+      glyph = resolveIntegrationIcon("webhook", "W");
+      background = "#64748B";
     }
   }
 
-  return NODE_ICONS[node.kind];
+  if (!glyph) {
+    glyph =
+      title === "AND" ? (
+        <BranchesOutlined style={{ fontSize: 11, color: "#fff" }} />
+      ) : (
+        <span style={{ display: "inline-flex", fontSize: 11, color: "#fff" }}>
+          {NODE_ICONS[node.kind]}
+        </span>
+      );
+  }
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 18,
+        height: 18,
+        borderRadius: 5,
+        background,
+        color: "#fff",
+        fontSize: 11,
+        lineHeight: 1,
+        flexShrink: 0,
+      }}
+    >
+      {glyph}
+    </span>
+  );
 }
 
 const ISSUE_RED = "#c45c4a";
@@ -644,9 +677,7 @@ export function RuleGraph({
                       fontFamily: "inherit",
                     }}
                   >
-                    <span style={{ display: "inline-flex", fontSize: 13, flexShrink: 0 }}>
-                      {nodeCardIcon(item.node, integrations, title)}
-                    </span>
+                    {nodeCardIconBadge(item.node, integrations, title, nodeColor.fill)}
                     <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{title}</span>
                   </div>
                 </foreignObject>
